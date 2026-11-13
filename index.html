@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1220">
+<title>Energy Monitor</title><link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="#dashboard"><span class="logo">ϟ</span><span><b>Energy Monitor</b><small>SMART ELECTRICAL SYSTEM</small></span></a>
+<p class="nav-label">MENU UTAMA</p>
+<nav>
+<a class="nav-link active" href="#dashboard" data-page="dashboard">▦ Dashboard</a>
+<a class="nav-link" href="#realtime" data-page="realtime">⌁ Real-time</a>
+<a class="nav-link" href="#analytics" data-page="analytics">▥ Analytics</a>
+<a class="nav-link" href="#history" data-page="history">◷ Riwayat Data</a>
+<a class="nav-link" href="#devices" data-page="devices">▣ Perangkat</a>
+<a class="nav-link" href="#settings" data-page="settings">⚙ Pengaturan</a>
+</nav>
+<div class="side-bottom"><div class="connection"><i></i><span><b>Mode demonstrasi</b><small>Data simulasi aktif</small></span></div><small>ENERGY MONITOR · V1.0</small></div>
+</aside>
+<main>
+<header class="topbar"><button id="menuBtn" class="menu">☰</button><div class="crumb">Workspace <span>/</span> <b id="pageTitle">Dashboard</b></div><div class="top-right"><span class="sim"><i></i> SIMULASI</span><button id="refreshBtn" class="refresh" title="Perbarui">↻</button><span class="avatar">EM</span></div></header>
+<section class="page active" id="page-dashboard">
+<div class="heading"><div><p class="eyebrow">OVERVIEW</p><h1>Dashboard</h1><p class="muted">Pantau kondisi dan konsumsi energi seluruh perangkat.</p></div><div class="date" id="todayLabel"></div></div>
+<div class="summary">
+<div><span class="sum-icon">▣</span><span><b id="onlineCount">2 / 3</b><small>Perangkat online</small></span></div>
+<div><span class="sum-icon">ϟ</span><span><b id="totalEnergy">—</b><small>Total energi hari ini</small></span></div>
+<div><span class="sum-icon green">◉</span><span><b id="totalPower">—</b><small>Total daya aktif</small></span></div>
+<div><span class="sum-icon orange">Rp</span><span><b id="totalCost">—</b><small>Estimasi biaya hari ini</small></span></div>
+</div>
+<div class="section-title"><div><h2>Parameter kelistrikan</h2><p class="muted">Ringkasan seluruh perangkat aktif</p></div><small>Pembaruan setiap 60 detik</small></div>
+<div class="metrics">
+<article class="metric"><label>Tegangan rata-rata <i>V</i></label><strong id="voltage">—</strong><small>Volt AC</small></article>
+<article class="metric"><label>Total arus <i>A</i></label><strong id="current">—</strong><small>Ampere AC</small></article>
+<article class="metric"><label>Total daya aktif <i>W</i></label><strong id="power">—</strong><small>Watt</small></article>
+<article class="metric"><label>Energi hari ini <i>kWh</i></label><strong id="energy">—</strong><small>Energi kumulatif</small></article>
+<article class="metric"><label>Frekuensi <i>Hz</i></label><strong id="frequency">—</strong><small>Hertz AC</small></article>
+<article class="metric"><label>Power factor <i>PF</i></label><strong id="pf">—</strong><small>Cos φ</small></article>
+</div>
+<div class="columns">
+<article class="panel"><div class="panel-head"><div><h2>Tren konsumsi energi</h2><p class="muted">Ilustrasi konsumsi per jam</p></div><select id="chartRange"><option value="today">Hari ini</option><option value="week">7 hari</option></select></div><div class="legend">● Energi (kWh)</div><svg id="energyChart" viewBox="0 0 700 230" role="img" aria-label="Grafik konsumsi energi"></svg><div class="axis"><span>00.00</span><span>04.00</span><span>08.00</span><span>12.00</span><span>16.00</span><span>20.00</span><span>24.00</span></div></article>
+<article class="panel"><div class="panel-head"><div><h2>Perangkat terpantau</h2><p class="muted">Status koneksi perangkat</p></div><a href="#devices">Semua →</a></div><div id="deviceMiniList"></div></article>
+</div>
+<article class="panel"><div class="panel-head"><div><h2>Pengukuran terakhir</h2><p class="muted">Ringkasan data perangkat</p></div><a href="#history">Riwayat →</a></div><div class="table-wrap"><table><thead><tr><th>Perangkat</th><th>Tegangan</th><th>Arus</th><th>Daya</th><th>Energi</th><th>Status</th></tr></thead><tbody id="latestRows"></tbody></table></div></article>
+</section>
+<section class="page" id="page-realtime"><div class="heading"><div><p class="eyebrow">LIVE MONITORING</p><h1>Real-time Monitoring</h1><p class="muted">Detail pengukuran berdasarkan perangkat.</p></div><select id="realtimeDevice"></select></div><div class="notice">ⓘ Halaman ini menggunakan data simulasi. Sensor fisik belum terhubung.</div><div class="metrics"><article class="metric"><label>Tegangan</label><strong id="rtVoltage">—</strong><small>Volt</small></article><article class="metric"><label>Arus</label><strong id="rtCurrent">—</strong><small>Ampere</small></article><article class="metric"><label>Daya aktif</label><strong id="rtPower">—</strong><small>Watt</small></article><article class="metric"><label>Energi kumulatif</label><strong id="rtEnergy">—</strong><small>kWh</small></article><article class="metric"><label>Frekuensi</label><strong id="rtFrequency">—</strong><small>Hz</small></article><article class="metric"><label>Power factor</label><strong id="rtPf">—</strong><small>Cos φ</small></article></div><article class="panel"><div class="panel-head"><h2>Informasi pengukuran</h2><span id="rtStatus" class="status online">ONLINE</span></div><div class="details" id="realtimeDetails"></div></article></section>
+<section class="page" id="page-analytics"><div class="heading"><div><p class="eyebrow">DATA INSIGHT</p><h1>Analytics</h1><p class="muted">Analisis pemakaian energi dan biaya.</p></div><select id="analyticsDevice"></select></div><div class="metrics three"><article class="metric"><label>Energi periode ini</label><strong id="analyticsEnergy">—</strong></article><article class="metric"><label>Rata-rata daya</label><strong id="analyticsPower">—</strong></article><article class="metric"><label>Estimasi biaya</label><strong id="analyticsCost">—</strong></article></div><article class="panel"><div class="panel-head"><div><h2>Konsumsi energi</h2><p class="muted">Perbandingan konsumsi ilustratif per hari</p></div><span class="tag">kWh</span></div><svg id="analyticsChart" viewBox="0 0 700 260" role="img" aria-label="Grafik analitik energi"></svg></article></section>
+<section class="page" id="page-history"><div class="heading"><div><p class="eyebrow">RECORDS</p><h1>Riwayat Data</h1><p class="muted">Catatan pengukuran perangkat.</p></div><button id="exportBtn" class="primary">↓ Ekspor CSV</button></div><article class="panel"><div class="filter"><select id="historyDevice"><option value="all">Semua perangkat</option></select><small id="historyCount"></small></div><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Perangkat</th><th>Tegangan</th><th>Arus</th><th>Daya</th><th>Energi</th><th>PF</th></tr></thead><tbody id="historyRows"></tbody></table></div></article></section>
+<section class="page" id="page-devices"><div class="heading"><div><p class="eyebrow">DEVICE MANAGEMENT</p><h1>Perangkat</h1><p class="muted">Daftar perangkat monitoring.</p></div><button id="addDeviceBtn" class="primary">＋ Tambah perangkat</button></div><div id="deviceCards" class="device-grid"></div></section>
+<section class="page" id="page-settings"><div class="heading"><div><p class="eyebrow">CONFIGURATION</p><h1>Pengaturan</h1><p class="muted">Konfigurasi dashboard.</p></div></div><article class="panel settings"><h2>Pengaturan monitoring</h2><label>Tarif listrik (Rp/kWh)</label><input id="tariffInput" type="number" min="0" value="1444.70"><label>Interval pembaruan</label><select id="intervalInput"><option value="15">15 detik</option><option value="30">30 detik</option><option value="60" selected>60 detik</option><option value="300">5 menit</option></select><label>Nama lokasi / instalasi</label><input id="siteName" value="Instalasi Utama"><button id="saveSettings" class="primary">Simpan pengaturan</button><small id="settingsMessage"></small></article><article class="panel"><h2>Tentang sistem</h2><p class="muted">Energy Monitor v1.0 · Frontend statis · GitHub Pages · Sumber data simulasi lokal.</p></article></section>
+<footer>Energy Monitor · Smart Electrical Monitoring System · <span id="footerYear"></span></footer>
+</main></div><div id="toast" class="toast"></div><script src="js/app.js"></script>
+</body></html>
