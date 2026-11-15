@@ -6,6 +6,21 @@ Portal monitoring energi listrik untuk pelanggan. Setiap akun pelanggan dipasang
 
 **Frontend v1.2 — login UI dan route guard disiapkan.** Dashboard sekarang mengarahkan pengguna yang belum memiliki sesi ke halaman login. Namun autentikasi belum bisa digunakan sampai backend API tersedia dan dikonfigurasi. Tidak ada akun demo atau password yang ditanam di frontend.
 
+## Google Sheets database (Apps Script)
+
+The Google Apps Script data layer is located at [`apps-script/Code.gs`](apps-script/Code.gs). It targets the owner's Google Sheets file and creates the following tabs when you run `setupEnergyMonitorDatabase()`:
+
+- `Customers`
+- `Devices`
+- `Measurements`
+- `Settings`
+
+To install it, open the spreadsheet, select **Extensions → Apps Script**, replace the editor's `Code.gs` contents with the repository file, save, and run `setupEnergyMonitorDatabase()` once. Review and authorize the requested spreadsheet permissions. Re-running setup preserves rows and refuses to overwrite unexpected header structures.
+
+Then use the spreadsheet's **Energy Monitor → Atur API Key Backend** menu to store a long random shared key in Script Properties. Deploy Apps Script as a **Web app**, executing as the owner. The Node.js backend will call this data API with the key; never place that key in frontend JavaScript or share it with customers.
+
+The Apps Script file is the Sheets data layer, not the customer login server. Customer login/session endpoints (`/auth/login`, `/auth/me`, `/auth/logout`) still belong to the Node.js backend. The backend must enforce authorization and always derive the customer/device scope from the authenticated session.
+
 ## File utama
 
 ```text
