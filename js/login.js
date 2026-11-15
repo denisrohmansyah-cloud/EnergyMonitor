@@ -3,7 +3,7 @@
   const message=document.getElementById("loginMessage");
   const notice=document.getElementById("backendNotice");
   const button=document.getElementById("loginButton");
-  const apiBase=String((window.ENERGY_MONITOR_CONFIG||{}).API_BASE_URL||"").replace(/\\/$/,"");
+  const apiBase=String((window.ENERGY_MONITOR_CONFIG||{}).API_BASE_URL||"").replace(/\/+$/, "");
   function showMessage(text,type){
     message.textContent=text;
     message.className="auth-message-box "+type+" show";
