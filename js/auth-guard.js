@@ -1,6 +1,6 @@
 (function(){
   const config=window.ENERGY_MONITOR_CONFIG||{};
-  const apiBase=String(config.API_BASE_URL||"").replace(/\\/$/,"");
+  const apiBase=String(config.API_BASE_URL||"").replace(/\/+$/, "");
   function redirectToLogin(){
     const loginUrl=new URL("login.html",window.location.href);
     window.location.replace(loginUrl.toString());
