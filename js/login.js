@@ -38,12 +38,12 @@
         credentials:"include",
         headers:{"Content-Type":"application/json","Accept":"application/json"},
         body:JSON.stringify({
-          email:document.getElementById("email").value.trim(),
+          username:document.getElementById("username").value.trim().toLowerCase(),
           password:document.getElementById("password").value
         })
       });
       const payload=await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(payload.message||"Email atau password tidak valid.");
+      if(!response.ok)throw new Error(payload.message||"Username atau password tidak valid.");
       const verify=await fetch(apiBase+"/auth/me",{credentials:"include",headers:{"Accept":"application/json"}});
       if(!verify.ok)throw new Error("Login diterima tetapi sesi belum dapat diverifikasi.");
       window.location.replace("index.html");
