@@ -27,6 +27,7 @@ const EM_CONFIG = Object.freeze({
   HEADERS: {
     Customers: [
       "customer_id",
+      "username",
       "full_name",
       "email",
       "password_hash",
@@ -128,13 +129,36 @@ function setupEnergyMonitorDatabase() {
     if (lastRow === 0) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     } else {
-      const existing = sheet
-        .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length))
-        .getDisplayValues()[0];
+      let existing = sheet
+        .getRange(1, 1, 1, sheet.getLastColumn())
+        .getDisplayValues()[0]
+        .map(function(value) { return String(value || "").trim(); });
 
-      const existingHeaders = existing.slice(0, headers.length);
+      // Safe migration from the previous Customers schema (without username).
+      if (
+        sheetName === EM_CONFIG.SHEETS.CUSTOMERS &&
+        existing[0] === "customer_id" &&
+        existing.indexOf("username") === -1
+      ) {
+        const oldHeaders = [
+          "customer_id", "full_name", "email", "password_hash", "status",
+          "location", "tariff_per_kwh", "created_at", "updated_at"
+        ];
+        const isLegacySchema = oldHeaders.every(function(header, index) {
+          return existing[index] === header;
+        });
+
+        if (isLegacySchema) {
+          sheet.insertColumnAfter(1);
+          sheet.getRange(1, 2).setValue("username");
+          existing = sheet.getRange(1, 1, 1, sheet.getLastColumn())
+            .getDisplayValues()[0]
+            .map(function(value) { return String(value || "").trim(); });
+        }
+      }
+
       const matches = headers.every(function(header, index) {
-        return String(existingHeaders[index] || "").trim() === header;
+        return String(existing[index] || "").trim() === header;
       });
 
       if (!matches) {
@@ -379,8 +403,9 @@ function jsonOutput_(data) {
  * {
  *   action: "createCustomer",
  *   apiKey: "...",
+ *   username: "pelanggan01",
  *   fullName: "Nama Pelanggan",
- *   email: "pelanggan@email.com",
+ *   email: "opsional@email.com",
  *   passwordHash: "<argon2id/bcrypt hash dari backend>",
  *   location: "Lokasi",
  *   tariffPerKwh: 0
@@ -390,10 +415,15 @@ function jsonOutput_(data) {
  */
 function createCustomer_(payload) {
   const fullName = requiredString_(payload.fullName, "fullName");
-  const email = requiredString_(payload.email, "email").toLowerCase();
+  const username = requiredString_(payload.username, "username").toLowerCase();
+  const email = String(payload.email || "").trim().toLowerCase();
   const passwordHash = requiredString_(payload.passwordHash, "passwordHash");
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+    throw new Error("Username harus 3-32 karakter dan hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.");
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("Format email tidak valid.");
   }
 
@@ -401,37 +431,51 @@ function createCustomer_(payload) {
     throw new Error("passwordHash tidak valid. Hash password di backend menggunakan Argon2id atau bcrypt.");
   }
 
-  const sheet = getSheet_(EM_CONFIG.SHEETS.CUSTOMERS);
-  const existing = getObjects_(sheet).some(function(row) {
-    return String(row.email || "").toLowerCase() === email;
-  });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = getSheet_(EM_CONFIG.SHEETS.CUSTOMERS);
+    const existing = getObjects_(sheet);
 
-  if (existing) {
-    throw new Error("Email sudah terdaftar.");
+    if (existing.some(function(row) {
+      return String(row.username || "").toLowerCase() === username;
+    })) {
+      throw new Error("Username sudah digunakan.");
+    }
+
+    if (email && existing.some(function(row) {
+      return String(row.email || "").toLowerCase() === email;
+    })) {
+      throw new Error("Email sudah terdaftar.");
+    }
+
+    const customerId = "CUS-" + Utilities.getUuid().replace(/-/g, "").substring(0, 10).toUpperCase();
+    const now = new Date();
+    const tariff = payload.tariffPerKwh === undefined ? 0 : numberValue_(payload.tariffPerKwh, "tariffPerKwh");
+
+    appendObjects_(sheet, [{
+      customer_id: customerId,
+      username: username,
+      full_name: fullName,
+      email: email,
+      password_hash: passwordHash,
+      status: "ACTIVE",
+      location: String(payload.location || ""),
+      tariff_per_kwh: tariff,
+      created_at: now,
+      updated_at: now
+    }]);
+
+    return {
+      customerId: customerId,
+      username: username,
+      email: email,
+      status: "ACTIVE",
+      message: "Pelanggan berhasil dibuat. Belum ada perangkat yang ditautkan."
+    };
+  } finally {
+    lock.releaseLock();
   }
-
-  const customerId = "CUS-" + Utilities.getUuid().replace(/-/g, "").substring(0, 10).toUpperCase();
-  const now = new Date();
-  const tariff = payload.tariffPerKwh === undefined ? 0 : numberValue_(payload.tariffPerKwh, "tariffPerKwh");
-
-  appendObjects_(sheet, [{
-    customer_id: customerId,
-    full_name: fullName,
-    email: email,
-    password_hash: passwordHash,
-    status: "ACTIVE",
-    location: String(payload.location || ""),
-    tariff_per_kwh: tariff,
-    created_at: now,
-    updated_at: now
-  }]);
-
-  return {
-    customerId: customerId,
-    email: email,
-    status: "ACTIVE",
-    message: "Pelanggan berhasil dibuat. Belum ada perangkat yang ditautkan."
-  };
 }
 
 
@@ -607,6 +651,7 @@ function getCustomerDashboard_(customerId) {
   return {
     customer: {
       customer_id: customer.customer_id,
+      username: customer.username,
       full_name: customer.full_name,
       email: customer.email,
       status: customer.status,
@@ -683,6 +728,7 @@ function listCustomers_() {
   return getObjects_(getSheet_(EM_CONFIG.SHEETS.CUSTOMERS)).map(function(row) {
     return {
       customer_id: row.customer_id,
+      username: row.username,
       full_name: row.full_name,
       email: row.email,
       status: row.status,
