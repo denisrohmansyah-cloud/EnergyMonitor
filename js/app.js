@@ -1,4 +1,4 @@
-const customer = {
+let customer = {
   id:"CUS-0001",
   name:"Pelanggan Demo",
   email:"pelanggan@example.com",
@@ -10,13 +10,13 @@ const customer = {
     frequency:50.02,pf:0.99,ip:"Belum dikonfigurasi",lastSeen:new Date()
   }
 };
-const tariffPerKwh = 1444.70;
+let tariffPerKwh = 1444.70;
 const intervalSeconds = 60;
 const history = [];
 const $ = id => document.getElementById(id);
 const fmt = (n,d=2) => Number(n||0).toLocaleString("id-ID",{minimumFractionDigits:d,maximumFractionDigits:d});
 const rupiah = n => "Rp"+Math.round(n).toLocaleString("id-ID");
-const d = customer.device;
+let d = customer.device;
 
 function escapeHtml(value){
   return String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -154,5 +154,51 @@ $("refreshBtn").addEventListener("click",()=>{simulateUpdate();notify("Data simu
 $("exportBtn").addEventListener("click",exportCSV);
 $("todayLabel").textContent=new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 $("footerYear").textContent=new Date().getFullYear();
-makeHistory();renderAll();
-setInterval(simulateUpdate,intervalSeconds*1000);
+function normalizeAuthenticatedCustomer(user){
+  const account=user.customer||user;
+  const device=account.device||user.device||{};
+  const fullName=account.full_name||account.name||"Pelanggan";
+  return {
+    id:account.customer_id||account.id||"",
+    name:fullName,
+    email:account.email||"",
+    location:account.location||device.location||"-",
+    device:{
+      id:device.device_id||device.id||"",
+      name:device.device_name||device.name||"Alat Monitoring",
+      type:device.device_type||device.type||"ESP32 + Sensor",
+      location:device.location||account.location||"-",
+      status:device.status||(device.is_online===true?"online":"offline"),
+      voltage:Number(device.voltage||0),
+      current:Number(device.current||0),
+      power:Number(device.power||0),
+      energyToday:Number(device.energy_today||device.energyToday||0),
+      energyTotal:Number(device.energy_total||device.energyTotal||0),
+      frequency:Number(device.frequency||0),
+      pf:Number(device.power_factor||device.pf||0),
+      ip:device.ip_address||device.ip||"Tidak tersedia",
+      lastSeen:device.last_seen?new Date(device.last_seen):new Date()
+    }
+  };
+}
+async function startCustomerDashboard(){
+  const authenticatedUser=await window.energyAuthReady;
+  customer=normalizeAuthenticatedCustomer(authenticatedUser);
+  d=customer.device;
+  const account=authenticatedUser.customer||authenticatedUser;
+  tariffPerKwh=Number(account.tariff_per_kwh||authenticatedUser.tariff_per_kwh||tariffPerKwh);
+  makeHistory();
+  renderAll();
+  setInterval(simulateUpdate,intervalSeconds*1000);
+  $("logoutBtn").addEventListener("click",async()=>{
+    const apiBase=window.ENERGY_MONITOR_CONFIG.API_BASE_URL.replace(/\\/$/,"");
+    try{
+      await fetch(apiBase+"/auth/logout",{method:"POST",credentials:"include",headers:{"Accept":"application/json"}});
+    }catch(error){console.warn("Logout request failed",error);}
+    window.location.replace("login.html");
+  });
+}
+startCustomerDashboard().catch(error=>{
+  console.error("Unable to start customer dashboard",error);
+  window.location.replace("login.html");
+});
