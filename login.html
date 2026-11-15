@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="theme-color" content="#0b1220">
+<title>Login Pelanggan | Energy Monitor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="auth-page">
+  <section class="auth-visual">
+    <a class="auth-brand" href="login.html"><span class="brand-mark">ϟ</span><span><b>Energy Monitor</b><small>SMART ELECTRICAL MONITORING</small></span></a>
+    <div class="auth-message">
+      <p class="eyebrow">PORTAL MONITORING PELANGGAN</p>
+      <h1>Pantau energi listrik Anda dengan mudah.</h1>
+      <p>Akses data tegangan, arus, daya, dan konsumsi energi dari satu alat monitoring yang terhubung khusus dengan akun Anda.</p>
+      <div class="auth-features">
+        <div class="auth-feature"><i>✓</i> Data perangkat pribadi untuk setiap pelanggan</div>
+        <div class="auth-feature"><i>✓</i> Riwayat dan analitik konsumsi energi</div>
+        <div class="auth-feature"><i>✓</i> Akses akun yang dilindungi autentikasi</div>
+      </div>
+    </div>
+    <div class="auth-copyright">© 2026 Energy Monitor · Smart Electrical Monitoring System</div>
+  </section>
+  <section class="auth-card-wrap">
+    <div class="auth-card">
+      <p class="eyebrow">SELAMAT DATANG KEMBALI</p>
+      <h2>Login Pelanggan</h2>
+      <p>Masuk menggunakan email dan password yang telah didaftarkan oleh administrator.</p>
+      <div class="auth-message-box info" id="backendNotice">Login membutuhkan koneksi backend autentikasi. Silakan konfigurasi alamat API pada <code>js/config.js</code>.</div>
+      <div class="auth-message-box error" id="loginMessage" role="alert"></div>
+      <form id="loginForm">
+        <div class="auth-field">
+          <label for="email">Alamat email</label>
+          <input id="email" name="email" type="email" autocomplete="username" placeholder="nama@email.com" required>
+        </div>
+        <div class="auth-field">
+          <label for="password">Password</label>
+          <div class="password-wrap">
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Masukkan password" required>
+            <button class="password-toggle" type="button" id="togglePassword">Lihat</button>
+          </div>
+        </div>
+        <button class="auth-submit" id="loginButton" type="submit">Masuk ke Dashboard</button>
+      </form>
+      <p class="auth-help">Belum memiliki akun atau lupa password?<br>Hubungi administrator layanan Energy Monitor.</p>
+      <div class="auth-security">♢ Koneksi akun harus diverifikasi oleh server</div>
+    </div>
+  </section>
+</div>
+<script src="js/config.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>
