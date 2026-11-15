@@ -19,7 +19,7 @@ To install it, open the spreadsheet, select **Extensions → Apps Script**, repl
 
 Then use the spreadsheet's **Energy Monitor → Atur API Key Backend** menu to store a long random shared key in Script Properties. Deploy Apps Script as a **Web app**, executing as the owner. The Node.js backend will call this data API with the key; never place that key in frontend JavaScript or share it with customers.
 
-The Apps Script file is the Sheets data layer, not the customer login server. Customer login/session endpoints (`/auth/login`, `/auth/me`, `/auth/logout`) still belong to the Node.js backend. The backend must enforce authorization and always derive the customer/device scope from the authenticated session.
+The Apps Script file is the Sheets data layer, not the customer login server. Customer login/session endpoints (`/auth/login`, `/auth/me`, `/auth/logout`) still belong to the Node.js backend. Login uses username and password; email is optional contact information. The backend must enforce authorization and always derive the customer/device scope from the authenticated session.
 
 ## File utama
 
@@ -55,11 +55,11 @@ Jangan masukkan password, API secret, token privat, atau kredensial database ke 
 
 | Method | Endpoint | Fungsi |
 |---|---|---|
-| POST | `/auth/login` | Memvalidasi email dan password, lalu membuat sesi |
+| POST | `/auth/login` | Memvalidasi username dan password, lalu membuat sesi |
 | GET | `/auth/me` | Mengembalikan profil pengguna dan satu perangkat yang ditautkan |
 | POST | `/auth/logout` | Menghapus sesi login |
 
-Login mengirim JSON `{ "email": "...", "password": "..." }`. Server sebaiknya mengembalikan cookie sesi dengan atribut `HttpOnly; Secure; SameSite=None` bila frontend dan backend berada pada origin berbeda. Endpoint yang memakai cookie harus menerapkan perlindungan CSRF yang sesuai.
+Login mengirim JSON `{ "username": "...", "password": "..." }`. Username bersifat unik dan tidak peka huruf besar/kecil; karakter yang diperbolehkan adalah huruf, angka, titik, garis bawah, dan tanda hubung (3-32 karakter). Email tetap dapat disimpan sebagai kontak, tetapi tidak digunakan untuk login. Server sebaiknya mengembalikan cookie sesi dengan atribut `HttpOnly; Secure; SameSite=None` bila frontend dan backend berada pada origin berbeda. Endpoint yang memakai cookie harus menerapkan perlindungan CSRF yang sesuai.
 
 Endpoint `/auth/me` diharapkan mengembalikan data seperti:
 
@@ -67,6 +67,7 @@ Endpoint `/auth/me` diharapkan mengembalikan data seperti:
 {
   "user": {
     "customer_id": "CUS-0001",
+    "username": "pelanggan01",
     "full_name": "Nama Pelanggan",
     "email": "pelanggan@example.com",
     "location": "Instalasi Utama",
