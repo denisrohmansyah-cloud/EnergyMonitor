@@ -27,13 +27,13 @@
     <div class="auth-card">
       <p class="eyebrow">SELAMAT DATANG KEMBALI</p>
       <h2>Login Pelanggan</h2>
-      <p>Masuk menggunakan email dan password yang telah didaftarkan oleh administrator.</p>
+      <p>Masuk menggunakan username dan password yang telah diberikan oleh administrator.</p>
       <div class="auth-message-box info" id="backendNotice">Login membutuhkan koneksi backend autentikasi. Silakan konfigurasi alamat API pada <code>js/config.js</code>.</div>
       <div class="auth-message-box error" id="loginMessage" role="alert"></div>
       <form id="loginForm">
         <div class="auth-field">
-          <label for="email">Alamat email</label>
-          <input id="email" name="email" type="email" autocomplete="username" placeholder="nama@email.com" required>
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" placeholder="Masukkan username" required>
         </div>
         <div class="auth-field">
           <label for="password">Password</label>
