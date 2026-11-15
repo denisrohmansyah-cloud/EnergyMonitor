@@ -1,21 +1,28 @@
-# Energy Monitor
+# Energy Monitor — Portal Pelanggan
 
-Dashboard monitoring energi listrik berbasis web untuk banyak perangkat ESP32. Proyek ini berdiri sendiri dan tidak terhubung dengan sistem kWh-Ku.
+Frontend portal monitoring energi listrik untuk pelanggan. **Setiap akun pelanggan dipasangkan dengan tepat satu alat monitoring.** Banyak pelanggan dapat menggunakan platform yang sama, tetapi setiap pelanggan hanya dapat melihat data dari alat yang ditautkan ke akunnya.
 
-## Status proyek
+## Status saat ini
 
-**Frontend v1.0 — mode demonstrasi.** Data pada dashboard saat ini dibuat secara simulasi di browser. Belum ada koneksi ke perangkat ESP32, API, atau database.
+**Frontend v1.1 — demonstrasi UI.** Nilai kelistrikan dan profil pelanggan pada versi ini masih berupa data simulasi di browser. Login, autentikasi, pemetaan akun-ke-perangkat, backend API, dan database belum diimplementasikan.
+
+## Konsep akses pelanggan
+
+- Satu akun pelanggan memiliki satu alat monitoring.
+- Pelanggan hanya melihat dashboard, data real-time, analitik, dan riwayat alat miliknya.
+- Tidak tersedia menu untuk memilih, menambah, atau mengelola banyak alat dari sisi pelanggan.
+- Pengaitan akun pelanggan dengan device ID dilakukan oleh backend/admin, bukan oleh JavaScript frontend.
 
 ## Fitur frontend
 
-- Dashboard gabungan untuk banyak perangkat.
-- Parameter tegangan (V), arus (A), daya aktif (W), energi (kWh), frekuensi (Hz), dan power factor.
-- Halaman monitoring per perangkat.
+- Dashboard khusus pelanggan.
+- Status dan identitas satu alat yang ditautkan ke akun.
+- Parameter tegangan, arus, daya aktif, energi, frekuensi, dan power factor.
+- Estimasi biaya berdasarkan tarif yang ditetapkan sistem.
 - Grafik konsumsi energi.
-- Riwayat data dan ekspor CSV.
-- Daftar perangkat dan penambahan perangkat simulasi.
-- Pengaturan tarif listrik dan interval pembaruan.
-- Tampilan responsif desktop dan ponsel.
+- Riwayat pengukuran dan ekspor CSV.
+- Profil pelanggan.
+- Layout responsif untuk desktop dan ponsel.
 
 ## Struktur proyek
 
@@ -31,7 +38,7 @@ EnergyMonitor/
 
 ## Menjalankan secara lokal
 
-Buka `index.html` di browser, atau jalankan server statis dari root repository:
+Buka `index.html` di browser atau jalankan:
 
 ```bash
 python -m http.server 8000
@@ -39,33 +46,24 @@ python -m http.server 8000
 
 Kemudian buka `http://localhost:8000`.
 
-## Publikasi dengan GitHub Pages
+## Publikasi GitHub Pages
 
-1. Buka **Settings → Pages** pada repository.
-2. Pada **Build and deployment**, pilih **Deploy from a branch**.
-3. Pilih branch `main` dan folder `/ (root)`.
-4. Klik **Save**.
-5. Tunggu proses deployment selesai. URL website akan ditampilkan pada halaman Pages.
+Pada repository, buka **Settings → Pages**, pilih **Deploy from a branch**, branch `main`, folder `/ (root)`, lalu klik **Save**.
 
-## Rencana arsitektur integrasi perangkat
-
-Frontend GitHub Pages bersifat statis. Untuk menerima data dari beberapa ESP32, tahap backend perlu menyediakan API HTTPS dan database yang dapat diakses melalui internet.
-
-Rencana alur data:
+## Arsitektur produksi yang disarankan
 
 ```text
-ESP32 + sensor
-     │ HTTPS / MQTT
-     ▼
-Backend API / MQTT Broker
-     │
-     ▼
-Database
-     │ REST API
-     ▼
-Energy Monitor (GitHub Pages)
+Pelanggan A ─ Akun A ─ Device EM-A
+                         │
+Pelanggan B ─ Akun B ─ Device EM-B
+                         │
+ESP32 + sensor ─ HTTPS/MQTT ─ Backend API ─ Database
+                                      │
+                          autentikasi + otorisasi
+                                      │
+                          GitHub Pages frontend
 ```
 
-Interval tampilan yang dipilih saat ini adalah 60 detik. Ketika terintegrasi, interval pengiriman sensor dan interval penyegaran dashboard sebaiknya diatur terpisah agar perangkat tidak mengirim data berlebihan.
+Backend harus memvalidasi sesi pengguna dan mengambil `device_id` yang terikat pada akun dari database. Jangan mempercayai `customer_id` atau `device_id` yang dikirim bebas oleh browser. Setiap endpoint pembacaan data wajib memfilter berdasarkan akun yang sedang login agar pelanggan tidak dapat mengakses data pelanggan lain.
 
-**Catatan keamanan:** jangan menaruh API secret, token, kata sandi Wi-Fi, atau kredensial database pada JavaScript frontend atau repository publik.
+GitHub Pages hanya meng-host frontend statis; jangan menyimpan password, token rahasia, atau kredensial database di file JavaScript publik. Autentikasi dan pemisahan data wajib dilakukan di backend.
