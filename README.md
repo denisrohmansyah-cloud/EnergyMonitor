@@ -1,69 +1,88 @@
 # Energy Monitor — Portal Pelanggan
 
-Frontend portal monitoring energi listrik untuk pelanggan. **Setiap akun pelanggan dipasangkan dengan tepat satu alat monitoring.** Banyak pelanggan dapat menggunakan platform yang sama, tetapi setiap pelanggan hanya dapat melihat data dari alat yang ditautkan ke akunnya.
+Portal monitoring energi listrik untuk pelanggan. Setiap akun pelanggan dipasangkan dengan tepat satu alat monitoring. Dashboard hanya dapat dibuka setelah autentikasi berhasil melalui backend API.
 
-## Status saat ini
+## Status proyek
 
-**Frontend v1.1 — demonstrasi UI.** Nilai kelistrikan dan profil pelanggan pada versi ini masih berupa data simulasi di browser. Login, autentikasi, pemetaan akun-ke-perangkat, backend API, dan database belum diimplementasikan.
+**Frontend v1.2 — login UI dan route guard disiapkan.** Dashboard sekarang mengarahkan pengguna yang belum memiliki sesi ke halaman login. Namun autentikasi belum bisa digunakan sampai backend API tersedia dan dikonfigurasi. Tidak ada akun demo atau password yang ditanam di frontend.
 
-## Konsep akses pelanggan
-
-- Satu akun pelanggan memiliki satu alat monitoring.
-- Pelanggan hanya melihat dashboard, data real-time, analitik, dan riwayat alat miliknya.
-- Tidak tersedia menu untuk memilih, menambah, atau mengelola banyak alat dari sisi pelanggan.
-- Pengaitan akun pelanggan dengan device ID dilakukan oleh backend/admin, bukan oleh JavaScript frontend.
-
-## Fitur frontend
-
-- Dashboard khusus pelanggan.
-- Status dan identitas satu alat yang ditautkan ke akun.
-- Parameter tegangan, arus, daya aktif, energi, frekuensi, dan power factor.
-- Estimasi biaya berdasarkan tarif yang ditetapkan sistem.
-- Grafik konsumsi energi.
-- Riwayat pengukuran dan ekspor CSV.
-- Profil pelanggan.
-- Layout responsif untuk desktop dan ponsel.
-
-## Struktur proyek
+## File utama
 
 ```text
 EnergyMonitor/
 ├── index.html
+├── login.html
 ├── css/
 │   └── style.css
 ├── js/
+│   ├── config.js
+│   ├── auth-guard.js
+│   ├── login.js
 │   └── app.js
 └── README.md
 ```
 
-## Menjalankan secara lokal
+## Konfigurasi API
 
-Buka `index.html` di browser atau jalankan:
+Edit `js/config.js` dan isi `API_BASE_URL` dengan URL backend API, termasuk prefix `/api`.
 
-```bash
-python -m http.server 8000
+Contoh:
+
+```js
+window.ENERGY_MONITOR_CONFIG = {
+  API_BASE_URL: "https://api.domain-anda.com/api"
+};
 ```
 
-Kemudian buka `http://localhost:8000`.
+Jangan masukkan password, API secret, token privat, atau kredensial database ke file frontend.
 
-## Publikasi GitHub Pages
+## Kontrak endpoint autentikasi yang dibutuhkan
 
-Pada repository, buka **Settings → Pages**, pilih **Deploy from a branch**, branch `main`, folder `/ (root)`, lalu klik **Save**.
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| POST | `/auth/login` | Memvalidasi email dan password, lalu membuat sesi |
+| GET | `/auth/me` | Mengembalikan profil pengguna dan satu perangkat yang ditautkan |
+| POST | `/auth/logout` | Menghapus sesi login |
 
-## Arsitektur produksi yang disarankan
+Login mengirim JSON `{ "email": "...", "password": "..." }`. Server sebaiknya mengembalikan cookie sesi dengan atribut `HttpOnly; Secure; SameSite=None` bila frontend dan backend berada pada origin berbeda. Endpoint yang memakai cookie harus menerapkan perlindungan CSRF yang sesuai.
 
-```text
-Pelanggan A ─ Akun A ─ Device EM-A
-                         │
-Pelanggan B ─ Akun B ─ Device EM-B
-                         │
-ESP32 + sensor ─ HTTPS/MQTT ─ Backend API ─ Database
-                                      │
-                          autentikasi + otorisasi
-                                      │
-                          GitHub Pages frontend
+Endpoint `/auth/me` diharapkan mengembalikan data seperti:
+
+```json
+{
+  "user": {
+    "customer_id": "CUS-0001",
+    "full_name": "Nama Pelanggan",
+    "email": "pelanggan@example.com",
+    "location": "Instalasi Utama",
+    "tariff_per_kwh": 1444.7,
+    "device": {
+      "device_id": "EM-001",
+      "device_name": "Energy Meter",
+      "device_type": "ESP32 + Sensor Energi",
+      "location": "Instalasi Utama",
+      "status": "online",
+      "voltage": 220.8,
+      "current": 2.34,
+      "power": 510.7,
+      "energy_today": 3.284,
+      "energy_total": 184.296,
+      "frequency": 50.02,
+      "power_factor": 0.99,
+      "last_seen": "2026-11-15T07:00:00Z"
+    }
+  }
+}
 ```
 
-Backend harus memvalidasi sesi pengguna dan mengambil `device_id` yang terikat pada akun dari database. Jangan mempercayai `customer_id` atau `device_id` yang dikirim bebas oleh browser. Setiap endpoint pembacaan data wajib memfilter berdasarkan akun yang sedang login agar pelanggan tidak dapat mengakses data pelanggan lain.
+## Keamanan akses pelanggan
 
-GitHub Pages hanya meng-host frontend statis; jangan menyimpan password, token rahasia, atau kredensial database di file JavaScript publik. Autentikasi dan pemisahan data wajib dilakukan di backend.
+- Satu akun pelanggan hanya dipasangkan dengan satu alat.
+- Relasi akun dan perangkat harus disimpan di database.
+- Backend wajib mengambil customer ID dari sesi login, bukan mempercayai ID yang dikirim browser.
+- Semua endpoint data pengukuran wajib memfilter berdasarkan perangkat milik pengguna yang sedang login.
+- Password disimpan dalam bentuk hash yang kuat di backend, bukan teks biasa.
+- Endpoint login perlu rate limiting dan validasi input.
+- CORS backend harus mengizinkan origin GitHub Pages yang tepat dan credentials; jangan gunakan wildcard origin bersama cookies.
+
+**Penting:** route guard di frontend hanya mengatur navigasi. Ia bukan mekanisme keamanan data. Perlindungan sebenarnya harus diberlakukan di backend pada setiap endpoint privat. GitHub Pages hanya meng-host file statis dan tidak menjalankan autentikasi server-side.
