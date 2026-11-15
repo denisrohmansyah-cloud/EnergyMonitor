@@ -191,7 +191,7 @@ async function startCustomerDashboard(){
   renderAll();
   setInterval(simulateUpdate,intervalSeconds*1000);
   $("logoutBtn").addEventListener("click",async()=>{
-    const apiBase=window.ENERGY_MONITOR_CONFIG.API_BASE_URL.replace(/\\/$/,"");
+    const apiBase=window.ENERGY_MONITOR_CONFIG.API_BASE_URL.replace(/\/+$/, "");
     try{
       await fetch(apiBase+"/auth/logout",{method:"POST",credentials:"include",headers:{"Accept":"application/json"}});
     }catch(error){console.warn("Logout request failed",error);}
