@@ -184,14 +184,15 @@ function notify(message){
   const toast=$("toast");toast.textContent=message;toast.classList.add("show");
   window.setTimeout(()=>toast.classList.remove("show"),2600);
 }
-async function refreshCustomerData(){
+async function refreshCustomerData(includeHistory=false){
   try{
-    const response=await fetch(String(window.ENERGY_MONITOR_CONFIG.API_BASE_URL||"").replace(/\/+$/,"")+"/dashboard",{credentials:"include",headers:{"Accept":"application/json"}});
+    const apiBase=String(window.ENERGY_MONITOR_CONFIG.API_BASE_URL||"").replace(/\/+$/, "");
+    const response=await fetch(apiBase+"/dashboard",{credentials:"include",headers:{"Accept":"application/json"}});
     const payload=await response.json().catch(()=>({}));
     if(response.status===401){window.location.replace("login.html");return;}
     if(!response.ok||payload.ok!==true)throw new Error(payload.message||"Gagal memperbarui dashboard.");
     applyDashboardSnapshot(payload.data);
-    await loadHistory();
+    if(includeHistory)await loadHistory();
     renderAll();
   }catch(error){
     console.error("Refresh dashboard failed:",error);
