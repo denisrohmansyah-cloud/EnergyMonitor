@@ -1,37 +1,34 @@
-# Energy Monitor — Portal Pelanggan
+# Energy Monitor — GitHub Pages + Google Apps Script
 
-Energy Monitor adalah website pemantauan energi listrik untuk pelanggan. Satu akun pelanggan dipasangkan dengan tepat satu alat monitoring ESP32. Setiap pelanggan hanya dapat melihat data alat yang tertaut ke akunnya.
+Website monitoring energi listrik untuk pelanggan. Seluruh source code dikelola di GitHub, frontend dipublikasikan lewat GitHub Pages, Apps Script menjadi backend/API, dan Google Sheets menjadi database. Tidak membutuhkan Node.js server, VPS, Render, atau Railway.
 
-## Arsitektur proyek
+Setiap akun pelanggan hanya terhubung ke **satu perangkat ESP32**. Dashboard dan riwayat selalu dibatasi berdasarkan sesi pelanggan.
 
-- Frontend: HTML, CSS, JavaScript, di-host melalui GitHub Pages.
-- Backend: Node.js + Express, bertugas memvalidasi login, membuat sesi, dan mengatur akses data.
-- Database: Google Sheets melalui Google Apps Script.
-- Perangkat: ESP32 + sensor energi; interval pengiriman yang direncanakan adalah 60 detik.
+## Arsitektur
 
 ~~~text
 Pelanggan
-  |
-  v
-GitHub Pages (login + dashboard)
-  | HTTPS + HttpOnly session cookie
-  v
-Node.js / Express API
-  | server-side API key
-  v
-Google Apps Script
-  |
-  v
+   |
+   v
+GitHub Pages
+Login + Dashboard + Analitik + Riwayat
+   |
+   | form POST tersembunyi ke iframe
+   | postMessage untuk respons
+   v
+Google Apps Script Web App (Code.gs)
+Autentikasi + Session Cache + API
+   |
+   v
 Google Sheets
-  +-- Customers
-  +-- Devices
-  +-- Measurements
-  +-- Settings
+Customers | Devices | Measurements | Settings
 
-ESP32 -- HTTPS + device token --> Node.js API --> Apps Script --> Measurements
+ESP32 -- HTTPS POST + device token --> Apps Script --> Measurements
 ~~~
 
-## Struktur repository
+Komunikasi browser menggunakan form POST ke iframe dan pesan balasan dari Apps Script. Pola ini menghindari kebutuhan CORS preflight biasa. Apps Script membatasi origin portal ke GitHub Pages proyek ini dan alamat localhost untuk pengembangan.
+
+## Repository files
 
 ~~~text
 EnergyMonitor/
@@ -40,110 +37,121 @@ EnergyMonitor/
 |-- css/
 |   |-- style.css
 |-- js/
-|   |-- app.js
-|   |-- auth-guard.js
 |   |-- config.js
+|   |-- portal-api.js
+|   |-- auth-guard.js
 |   |-- login.js
+|   |-- app.js
 |-- apps-script/
 |   |-- Code.gs
-|-- backend/
-    |-- .env.example
-    |-- .gitignore
-    |-- package.json
-    |-- README.md
-    |-- src/
-        |-- server.js
+|-- README.md
 ~~~
+
+## Google Sheets
+
+Database: [Energy Monitor Spreadsheet](https://docs.google.com/spreadsheets/d/1syMXmoiHI3Z5qEqowWQeNwCziRbpHM8cDssWxY7maUQ/edit)
+
+Empat tab database:
+- Customers: customer_id, username, full_name, email, password_hash, status, location, tariff_per_kwh, created_at, updated_at.
+- Devices: identitas perangkat, customer_id, device token hash, status, dan last_seen.
+- Measurements: nilai pengukuran dan timestamp.
+- Settings: interval, timezone, mata uang, dan konfigurasi.
+
+## Setup Apps Script
+
+1. Buka spreadsheet di atas.
+2. Pilih **Extensions → Apps Script**.
+3. Salin seluruh isi apps-script/Code.gs ke editor Code.gs.
+4. Simpan project.
+5. Jalankan setupEnergyMonitorDatabase() satu kali (atau ulangi dengan aman untuk memastikan kolom username tersedia). Berikan izin akses Google Sheets.
+6. Muat ulang spreadsheet agar menu **Energy Monitor** tampil.
+7. Deploy → **New deployment** → pilih **Web app**.
+8. **Execute as:** Me.
+9. **Who has access:** Anyone.
+10. Deploy dan salin URL yang berakhiran /exec.
+
+Apps Script deployment yang saat ini sudah diberikan untuk proyek:
+
+~~~text
+https://script.google.com/macros/s/AKfycbzDZeJOBeWnavV33PAafw112D6HHv020XZMLd1Cs6pFSQT2ViIisZJKDHtir-Gn9QgVnw/exec
+~~~
+
+Setelah perubahan Code.gs, buka **Deploy → Manage deployments → Edit → New version → Deploy**. URL /exec yang sama dapat dipertahankan bila deployment yang sama diedit.
+
+## Membuat akun pelanggan
+
+Di Google Sheets, gunakan menu **Energy Monitor → Tambah Pelanggan**. Isi username, nama, email opsional, lokasi, tarif, dan password awal. Password disimpan sebagai hash PBKDF2-SHA256 dengan salt dan pepper Script Properties; password asli tidak ditulis ke sheet.
+
+Setelah pelanggan dibuat, gunakan **Energy Monitor → Hubungkan Perangkat**. Masukkan Customer ID lalu identitas alat. Script menghasilkan Device ID dan device token. **Salin device token saat dialog muncul** dan pasang ke firmware ESP32. Token aslinya tidak disimpan di sheet; hanya hash-nya yang disimpan. Satu pelanggan tidak bisa diberi perangkat kedua.
+
+Berikan username dan password awal melalui saluran terpisah kepada pelanggan. Jangan menulis password pada kolom sheet atau repository.
+
+## GitHub Pages
+
+Aktifkan **Settings → Pages → Deploy from a branch → main → /(root)**.
+
+URL website:
+
+~~~text
+https://denisrohmansyah-cloud.github.io/EnergyMonitor/
+~~~
+
+URL Apps Script sudah ditulis di js/config.js. URL tersebut bukan rahasia. Jangan pernah menaruh password, device token, atau API secret pada frontend.
+
+## Integrasi ESP32
+
+ESP32 mengirim data dengan HTTP POST JSON ke Apps Script /exec:
+
+~~~json
+{
+  "action": "ingestMeasurement",
+  "deviceId": "EM-DEVICE-ID",
+  "deviceToken": "DEVICE_TOKEN_DARI_MENU",
+  "measuredAt": "2026-11-17T09:00:00+07:00",
+  "voltage": 220.5,
+  "current": 1.25,
+  "activePower": 275,
+  "energy": 12.345,
+  "frequency": 50,
+  "powerFactor": 0.98,
+  "temperature": 29.5,
+  "humidity": 65,
+  "rssi": -62
+}
+~~~
+
+Kolom voltage, current, activePower, energy, frequency, dan powerFactor wajib diisi. Temperature, humidity, dan RSSI opsional. Interval yang direncanakan: 60 detik.
+
+## Fitur portal
+
+- Login username dan password.
+- Dashboard satu alat untuk satu pelanggan.
+- Real-time snapshot berdasarkan pengukuran terakhir.
+- Grafik energi harian dan 7 hari (agregasi dilakukan Apps Script).
+- Riwayat pengukuran terakhir hingga 1.000 catatan.
+- Ekspor riwayat CSV.
+- Logout dan sesi portal dengan batas waktu 2 jam.
+- Status perangkat offline berdasarkan waktu pengukuran terakhir.
+
+## Keamanan dan batasan
+
+- Sesi disimpan dalam CacheService Apps Script dan token sisi browser berada di sessionStorage (hilang saat tab ditutup). Cache Google dapat menghapus data sebelum TTL; pelanggan mungkin perlu login lagi.
+- Karena token sesi dapat diakses JavaScript halaman, hindari script pihak ketiga yang tidak dipercaya dan jangan menambahkan HTML tak tepercaya. Proteksi XSS sangat penting.
+- Apps Script Web App harus dapat diakses untuk memproses login; password tetap diverifikasi di server Apps Script dan disimpan sebagai hash, bukan teks biasa.
+- Rate limiting login diterapkan per username. Untuk penggunaan skala besar/risiko tinggi, gunakan penyedia autentikasi khusus dan database server-side.
+- Device token hanya diberikan satu kali ketika perangkat dibuat dan harus dirahasiakan di firmware.
+- Jangan membagikan API key opsional Apps Script atau device token melalui chat publik / repository.
+- Pengguna harus login sebelum dashboard bisa diakses.
 
 ## Status implementasi
 
-- [x] Frontend portal pelanggan untuk satu alat per akun.
-- [x] Login username dan password pada frontend.
-- [x] Route guard dashboard dan tombol logout.
-- [x] Google Sheets schema: Customers, Devices, Measurements, Settings.
-- [x] Apps Script: membuat pelanggan/perangkat, mencari hash username, menerima pengukuran, mengambil dashboard dan riwayat.
-- [x] Backend Node.js: login bcrypt, sesi bertanda tangan dalam cookie HttpOnly, endpoint dashboard/history, admin provisioning, endpoint ingest ESP32.
-- [x] Frontend dashboard menggunakan API dan tidak lagi menghasilkan data simulasi.
-- [ ] Jalankan/migrasikan Apps Script di spreadsheet dan deploy Web App versi terbaru.
-- [ ] Deploy backend Node.js pada hosting HTTPS dan isi environment variables.
-- [ ] Isi URL backend pada js/config.js.
-- [ ] Buat akun pelanggan dan kaitkan satu perangkat ESP32.
-- [ ] Uji login, pemisahan data pelanggan, dan pengiriman data perangkat.
-
-## 1. Google Sheets dan Apps Script
-
-Spreadsheet yang digunakan:
-
-[Energy Monitor Google Sheets](https://docs.google.com/spreadsheets/d/1syMXmoiHI3Z5qEqowWQeNwCziRbpHM8cDssWxY7maUQ/edit)
-
-1. Buka Extensions → Apps Script.
-2. Salin isi apps-script/Code.gs ke editor Apps Script.
-3. Simpan, pilih fungsi setupEnergyMonitorDatabase, lalu tekan Run dan berikan izin.
-4. Jalankan menu Energy Monitor → Atur API Key Backend dan masukkan random secret minimal 32 karakter.
-5. Pilih Deploy → Manage deployments → Edit atau buat deployment baru.
-6. Pilih tipe Web app, execute as Me, lalu atur akses agar backend dapat memanggilnya. Salin URL yang berakhiran /exec.
-7. Simpan URL tersebut sebagai APPS_SCRIPT_URL dan secret yang sama sebagai APPS_SCRIPT_API_KEY pada environment backend.
-
-Jika Apps Script sudah pernah di-deploy, perubahan Code.gs perlu dipublikasikan sebagai versi deployment baru agar endpoint getCustomerAuthByUsername dan ringkasan energi harian ikut aktif.
-
-## 2. Backend Node.js
-
-Baca backend/README.md.
-
-Ringkasan langkah:
-
-~~~bash
-cd backend
-npm install
-cp .env.example .env
-npm run check
-npm start
-~~~
-
-Atur environment variables pada .env. Jangan commit file tersebut.
-
-Endpoint penting:
-
-| Method | Endpoint | Fungsi |
-|---|---|---|
-| POST | /api/auth/login | Login username/password |
-| GET | /api/auth/me | Verifikasi sesi pelanggan |
-| POST | /api/auth/logout | Logout |
-| GET | /api/dashboard | Snapshot alat pelanggan |
-| GET | /api/history | Riwayat alat pelanggan |
-| POST | /api/admin/customers | Admin membuat akun |
-| POST | /api/admin/customers/:id/device | Admin mengaitkan satu alat |
-| POST | /api/device/measurements | ESP32 mengirim pengukuran |
-
-## 3. GitHub Pages dan frontend
-
-Aktifkan GitHub Pages melalui Settings → Pages → Deploy from a branch → main → /(root).
-
-Setelah backend online dengan HTTPS, ubah js/config.js:
-
-~~~js
-window.ENERGY_MONITOR_CONFIG = {
-  API_BASE_URL: "https://URL-BACKEND-ANDA/api"
-};
-~~~
-
-Origin frontend untuk CORS adalah:
-
-~~~text
-https://denisrohmansyah-cloud.github.io
-~~~
-
-Jika backend dan GitHub Pages berada pada site berbeda, cookie perlu Secure=true dan SameSite=None. Sebagian browser membatasi third-party cookies; untuk layanan pelanggan produksi, gunakan custom domain sehingga frontend dan API berada di bawah site yang sama bila memungkinkan.
-
-## 4. Keamanan dan pembatasan data
-
-- Password pelanggan di-hash menggunakan bcrypt pada backend.
-- API key Apps Script dan admin key hanya berada di environment backend.
-- Sesi pelanggan menggunakan cookie HttpOnly bertanda tangan dan berumur terbatas.
-- ID pelanggan untuk endpoint dashboard/history selalu diambil dari sesi, bukan dari input browser.
-- Google Sheets membatasi satu perangkat untuk setiap customer.
-- Device token dibuat saat provisioning; hanya hash token yang disimpan di Sheets.
-- Setiap endpoint pengukuran memverifikasi device token.
-- HTTPS wajib digunakan untuk deployment publik.
-
-Catatan: signed cookie yang dicuri tetap berlaku sampai masa kedaluwarsanya berakhir. Gunakan HTTPS, masa sesi pendek, dan rotasi SESSION_SECRET untuk membatalkan seluruh sesi. Untuk pencabutan sesi individual, tambahkan session store server-side.
+- [x] Frontend GitHub Pages.
+- [x] Direct portal bridge GitHub Pages ↔ Apps Script.
+- [x] Login username/password dan sesi pelanggan.
+- [x] Pembatasan satu perangkat per pelanggan.
+- [x] Dashboard, analitik, dan riwayat memakai data Google Sheets.
+- [x] Alur admin Apps Script untuk membuat pelanggan dan memasangkan perangkat.
+- [ ] Tempel Code.gs terbaru ke project Apps Script dan deploy versi terbaru.
+- [ ] Uji login dari halaman GitHub Pages.
+- [ ] Buat akun pelanggan pertama.
+- [ ] Pasang device token pada ESP32 dan uji pengiriman pengukuran.
