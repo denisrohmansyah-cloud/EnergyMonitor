@@ -78,6 +78,7 @@ const EM_CONFIG = Object.freeze({
     ["timezone", "Asia/Jakarta", "Zona waktu sistem"],
     ["measurement_interval_seconds", "60", "Interval pengiriman/pembaruan data dalam detik"],
     ["max_devices_per_customer", "1", "Maksimal perangkat aktif untuk setiap pelanggan"],
+    ["device_offline_after_seconds", "180", "Perangkat dianggap offline jika tidak mengirim data selama batas waktu ini"],
     ["default_tariff_per_kwh", "0", "Tarif default. Atur tarif sebenarnya per pelanggan."]
   ],
   MAX_HISTORY_LIMIT: 12000
@@ -698,6 +699,19 @@ function getCustomerDashboard_(customerId) {
     ? getDeviceMeasurementSummary_(device.device_id, 7)
     : { latestMeasurement: null, energyDaily: [], energyHourly: [] };
 
+  let deviceStatus = "OFFLINE";
+  if (device && device.last_seen) {
+    const lastSeenTime = new Date(device.last_seen).getTime();
+    const offlineAfterSeconds = Number(getSettingValue_("device_offline_after_seconds", 180));
+    if (
+      isFinite(lastSeenTime) &&
+      lastSeenTime > 0 &&
+      Date.now() - lastSeenTime <= Math.max(60, offlineAfterSeconds) * 1000
+    ) {
+      deviceStatus = "ONLINE";
+    }
+  }
+
   return {
     customer: {
       customer_id: customer.customer_id,
@@ -713,7 +727,7 @@ function getCustomerDashboard_(customerId) {
       device_name: device.device_name,
       device_type: device.device_type,
       location: device.location,
-      status: device.status,
+      status: deviceStatus,
       last_seen: device.last_seen
     } : null,
     latestMeasurement: summary.latestMeasurement,
@@ -730,6 +744,15 @@ function getCustomerDashboard_(customerId) {
  * deltas from cumulative meter values. This avoids downloading thousands of
  * records to the customer browser for charts.
  */
+function getSettingValue_(settingKey, fallbackValue) {
+  const setting = findObject_(
+    EM_CONFIG.SHEETS.SETTINGS,
+    "setting_key",
+    settingKey
+  );
+  return setting ? setting.setting_value : fallbackValue;
+}
+
 function getDeviceMeasurementSummary_(deviceId, numberOfDays) {
   const rows = getObjects_(getSheet_(EM_CONFIG.SHEETS.MEASUREMENTS))
     .filter(function(row) {
