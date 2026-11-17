@@ -96,6 +96,7 @@ function onOpen() {
     .addItem("Tes Koneksi Database", "testDatabaseConnection")
     .addSeparator()
     .addItem("Tambah Pelanggan", "createCustomerFromEditor")
+    .addItem("Aktifkan Akun & Reset Password", "repairCustomerAccountFromEditor")
     .addItem("Hubungkan Perangkat", "assignDeviceToCustomerFromEditor")
     .addToUi();
 }
@@ -1490,6 +1491,81 @@ function createCustomerFromEditor() {
   ui.alert(
     "Pelanggan berhasil dibuat",
     "Customer ID: " + customerId + "\nUsername: " + username + "\nSatu perangkat dapat ditautkan melalui menu Energy Monitor.",
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * Memperbaiki akun pelanggan lama yang dibuat secara manual di Google Sheets.
+ * - Menemukan akun berdasarkan username.
+ * - Mengubah status menjadi ACTIVE.
+ * - Mengganti nilai password_hash lama (termasuk plaintext) dengan PBKDF2.
+ * - Tidak mengubah customer_id, username, nama, email, lokasi, atau tarif.
+ *
+ * Jalankan dari menu Energy Monitor. Jangan ketik password ke sel spreadsheet.
+ */
+function repairCustomerAccountFromEditor() {
+  const ui = SpreadsheetApp.getUi();
+
+  const usernameResponse = ui.prompt(
+    "Aktifkan Akun & Reset Password",
+    "Masukkan username persis seperti pada tab Customers.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (usernameResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const username = String(usernameResponse.getResponseText() || "").trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+    ui.alert("Username tidak valid.");
+    return;
+  }
+
+  const customer = findObject_(EM_CONFIG.SHEETS.CUSTOMERS, "username", username);
+  if (!customer) {
+    ui.alert("Akun tidak ditemukan", "Tidak ada pelanggan dengan username tersebut.", ui.ButtonSet.OK);
+    return;
+  }
+
+  const passwordResponse = ui.prompt(
+    "Password Baru",
+    "Masukkan password baru minimal 10 karakter. Password akan di-hash sebelum disimpan.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (passwordResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const newPassword = String(passwordResponse.getResponseText() || "");
+  if (newPassword.length < 10 || newPassword.length > 200) {
+    ui.alert("Password harus 10-200 karakter.");
+    return;
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    // Re-check under lock so the operation does not update a stale row.
+    const latestCustomer = findObject_(EM_CONFIG.SHEETS.CUSTOMERS, "username", username);
+    if (!latestCustomer) throw new Error("Akun pelanggan tidak lagi ditemukan.");
+
+    updateObjectByKey_(
+      EM_CONFIG.SHEETS.CUSTOMERS,
+      "customer_id",
+      latestCustomer.customer_id,
+      {
+        password_hash: createPortalPasswordHash_(newPassword),
+        status: "ACTIVE",
+        updated_at: new Date()
+      }
+    );
+  } finally {
+    lock.releaseLock();
+  }
+
+  ui.alert(
+    "Akun berhasil diperbaiki",
+    "Username: " + username +
+    "\nCustomer ID: " + customer.customer_id +
+    "\nStatus: ACTIVE" +
+    "\nPassword telah disimpan dalam bentuk hash. Nilai password asli tidak disimpan di spreadsheet.",
     ui.ButtonSet.OK
   );
 }
