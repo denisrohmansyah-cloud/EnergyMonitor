@@ -30,7 +30,11 @@ Health check: `GET http://localhost:3000/api/health`.
 
 - `FRONTEND_ORIGINS`: exact browser origin(s), comma separated.
 - `SESSION_SECRET`: random secret, minimum 32 characters.
-- `APPS_SCRIPT_URL`: deployed Apps Script Web App URL ending in `/exec`.
+- `APPS_SCRIPT_URL`: deployed Apps Script Web App URL ending in `/exec`. The currently supplied deployment URL is:
+
+  `https://script.google.com/macros/s/AKfycbzDZeJOBeWnavV33PAafw112D6HHv020XZMLd1Cs6pFSQT2ViIisZJKDHtir-Gn9QgVnw/exec`
+
+  Change it if you create a new Apps Script deployment.
 - `APPS_SCRIPT_API_KEY`: must match the Script Property value configured in Apps Script.
 - `ADMIN_API_KEY`: separate random admin secret.
 - `COOKIE_SECURE=true` and `COOKIE_SAME_SITE=none` when using HTTPS from GitHub Pages on a different site.
