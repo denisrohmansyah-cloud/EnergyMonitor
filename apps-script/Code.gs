@@ -80,7 +80,7 @@ const EM_CONFIG = Object.freeze({
     ["max_devices_per_customer", "1", "Maksimal perangkat aktif untuk setiap pelanggan"],
     ["default_tariff_per_kwh", "0", "Tarif default. Atur tarif sebenarnya per pelanggan."]
   ],
-  MAX_HISTORY_LIMIT: 1000
+  MAX_HISTORY_LIMIT: 12000
 });
 
 
