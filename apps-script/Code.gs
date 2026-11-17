@@ -332,6 +332,10 @@ function doPost(e) {
     requireBackendApiKey_(payload.apiKey);
 
     switch (action) {
+      case "getCustomerAuthByUsername":
+        result = getCustomerAuthByUsername_(payload.username);
+        break;
+
       case "createCustomer":
         result = createCustomer_(payload);
         break;
@@ -476,6 +480,31 @@ function createCustomer_(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+
+/**
+ * Lookup hash password berdasarkan username.
+ * Fungsi ini hanya boleh dipanggil backend tepercaya dengan BACKEND_API_KEY.
+ * Jangan pernah mengembalikan password_hash melalui endpoint publik.
+ */
+function getCustomerAuthByUsername_(username) {
+  username = requiredString_(username, "username").toLowerCase();
+
+  const customer = findObject_(
+    EM_CONFIG.SHEETS.CUSTOMERS,
+    "username",
+    username
+  );
+
+  if (!customer) return null;
+
+  return {
+    customerId: customer.customer_id,
+    username: customer.username,
+    passwordHash: customer.password_hash,
+    status: customer.status
+  };
 }
 
 
@@ -647,6 +676,7 @@ function getCustomerDashboard_(customerId) {
 
   const device = customerDevices.length ? customerDevices[0] : null;
   const latest = device ? getLatestMeasurement_(device.device_id) : null;
+  const energyTodayKwh = device ? getTodayEnergyForDevice_(device.device_id) : 0;
 
   return {
     customer: {
@@ -666,8 +696,47 @@ function getCustomerDashboard_(customerId) {
       status: device.status,
       last_seen: device.last_seen
     } : null,
-    latestMeasurement: latest
+    latestMeasurement: latest,
+    energyTodayKwh: energyTodayKwh
   };
+}
+
+/**
+ * Menghitung konsumsi hari ini dari selisih meter energi kumulatif.
+ * Jika belum ada pembacaan sebelum hari ini, baseline memakai pembacaan
+ * pertama hari ini sehingga nilai awal tidak dianggap sebagai konsumsi hari ini.
+ */
+function getTodayEnergyForDevice_(deviceId) {
+  const rows = getObjects_(getSheet_(EM_CONFIG.SHEETS.MEASUREMENTS))
+    .filter(function(row) {
+      return String(row.device_id) === String(deviceId);
+    })
+    .sort(function(a, b) {
+      return new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime();
+    });
+
+  if (!rows.length) return 0;
+
+  const todayKey = Utilities.formatDate(
+    new Date(),
+    "Asia/Jakarta",
+    "yyyy-MM-dd"
+  );
+
+  const todayRows = rows.filter(function(row) {
+    return Utilities.formatDate(
+      new Date(row.measured_at),
+      "Asia/Jakarta",
+      "yyyy-MM-dd"
+    ) === todayKey;
+  });
+
+  if (!todayRows.length) return 0;
+
+  const firstToday = Number(todayRows[0].energy_kwh || 0);
+  const latestToday = Number(todayRows[todayRows.length - 1].energy_kwh || 0);
+
+  return Math.max(0, latestToday - firstToday);
 }
 
 function getLatestMeasurement_(deviceId) {
