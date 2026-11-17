@@ -129,15 +129,37 @@ function renderAll(){
   drawChart("analyticsChart",calculateDailyUsage());
 }
 async function apiGet(path){
-  const apiBase=String(window.ENERGY_MONITOR_CONFIG.API_BASE_URL||"").replace(/\/+$/,"");
-  const response=await fetch(apiBase+path,{method:"GET",credentials:"include",headers:{"Accept":"application/json"}});
-  const payload=await response.json().catch(()=>({}));
-  if(response.status===401){window.location.replace("login.html");throw new Error("Sesi berakhir. Silakan login kembali.");}
-  if(!response.ok||payload.ok!==true)throw new Error(payload.message||"Gagal mengambil data dari server.");
-  return payload.data;
+  const portal=window.EnergyMonitorPortal;
+  const token=portal&&portal.getSessionToken();
+  if(!token){
+    window.location.replace("login.html");
+    throw new Error("Sesi pelanggan tidak ditemukan.");
+  }
+  if(path.startsWith("/dashboard")){
+    return portal.request("dashboard",{sessionToken:token});
+  }
+  if(path.startsWith("/history")){
+    const query=new URLSearchParams(path.split("?")[1]||"");
+    return portal.request("history",{
+      sessionToken:token,
+      limit:Number(query.get("limit")||1000)
+    });
+  }
+  throw new Error("Permintaan data tidak dikenal.");
 }
 function applyDashboardSnapshot(snapshot){
-  const account=snapshot.customer||{},device=snapshot.device||{},latest=snapshot.latestMeasurement||{};
+  const account=snapshot.customer||{};
+  const device=snapshot.device||{};
+  const raw=snapshot.latestMeasurement||{};
+  const latest={
+    time:raw.measured_at||raw.time,
+    voltage:raw.voltage_v??raw.voltage??0,
+    current:raw.current_a??raw.current??0,
+    power:raw.active_power_w??raw.activePower??raw.power??0,
+    energy:raw.energy_kwh??raw.energy??0,
+    frequency:raw.frequency_hz??raw.frequency??0,
+    pf:raw.power_factor??raw.powerFactor??raw.pf??0
+  };
   const lastSeen=validDate(device.last_seen)||validDate(latest.time)||new Date(0);
   const deviceId=device.device_id||"";
   const noDevice=!deviceId;
@@ -151,14 +173,14 @@ function applyDashboardSnapshot(snapshot){
       name:device.device_name||(noDevice?"Belum ada alat terdaftar":"Energy Monitor"),
       type:device.device_type||"ESP32 + Sensor Energi",
       location:device.location||account.location||"-",
-      status:noDevice?"offline":(device.status||"offline"),
-      voltage:Number(latest.voltage??device.voltage??0),
-      current:Number(latest.current??device.current??0),
-      power:Number(latest.power??device.power??0),
+      status:noDevice?"offline":(String(device.status||"offline").toLowerCase()),
+      voltage:Number(latest.voltage||0),
+      current:Number(latest.current||0),
+      power:Number(latest.power||0),
       energyToday:Number(snapshot.energyTodayKwh||0),
-      energyTotal:Number(latest.energy??device.energy_total??0),
-      frequency:Number(latest.frequency??device.frequency??0),
-      pf:Number(latest.pf??device.power_factor??0),
+      energyTotal:Number(latest.energy||0),
+      frequency:Number(latest.frequency||0),
+      pf:Number(latest.pf||0),
       ip:"Tidak tersedia",
       lastSeen
     }
@@ -170,13 +192,13 @@ async function loadHistory(){
   const result=await apiGet("/history?limit=12000");
   const records=Array.isArray(result.records)?result.records:[];
   const normalized=records.map(row=>({
-    time:validDate(row.time)||new Date(0),
-    voltage:Number(row.voltage||0),
-    current:Number(row.current||0),
-    power:Number(row.power||0),
-    energy:Number(row.energy||0),
-    frequency:Number(row.frequency||0),
-    pf:Number(row.pf||0)
+    time:validDate(row.measured_at||row.time)||new Date(0),
+    voltage:Number(row.voltage_v??row.voltage??0),
+    current:Number(row.current_a??row.current??0),
+    power:Number(row.active_power_w??row.activePower??row.power??0),
+    energy:Number(row.energy_kwh??row.energy??0),
+    frequency:Number(row.frequency_hz??row.frequency??0),
+    pf:Number(row.power_factor??row.powerFactor??row.pf??0)
   })).filter(row=>row.time.getTime()>0).sort((a,b)=>a.time-b.time);
   history.splice(0,history.length,...normalized);
 }
@@ -186,17 +208,14 @@ function notify(message){
 }
 async function refreshCustomerData(includeHistory=false){
   try{
-    const apiBase=String(window.ENERGY_MONITOR_CONFIG.API_BASE_URL||"").replace(/\/+$/, "");
-    const response=await fetch(apiBase+"/dashboard",{credentials:"include",headers:{"Accept":"application/json"}});
-    const payload=await response.json().catch(()=>({}));
-    if(response.status===401){window.location.replace("login.html");return;}
-    if(!response.ok||payload.ok!==true)throw new Error(payload.message||"Gagal memperbarui dashboard.");
-    applyDashboardSnapshot(payload.data);
+    const snapshot=await apiGet("/dashboard");
+    applyDashboardSnapshot(snapshot);
     if(includeHistory)await loadHistory();
     renderAll();
   }catch(error){
     console.error("Refresh dashboard failed:",error);
-    notify("Data belum dapat diperbarui. Periksa koneksi server.");
+    if(/Sesi|login/i.test(error.message))window.location.replace("login.html");
+    else notify(error.message||"Data belum dapat diperbarui.");
   }
 }
 function showPage(page){
@@ -226,25 +245,23 @@ $("todayLabel").textContent=new Date().toLocaleDateString("id-ID",{weekday:"long
 $("footerYear").textContent=new Date().getFullYear();
 
 async function startCustomerDashboard(){
-  const user=await window.energyAuthReady;
-  applyDashboardSnapshot({
-    customer:user.customer||user,
-    device:user.device||null,
-    latestMeasurement:user.latestMeasurement||null,
-    energyTodayKwh:user.energyTodayKwh||0
-  });
+  const snapshot=await window.energyAuthReady;
+  applyDashboardSnapshot(snapshot);
   await loadHistory();
   renderAll();
-  window.setInterval(refreshCustomerData,intervalSeconds*1000);
+
+  window.setInterval(()=>refreshCustomerData(false),intervalSeconds*1000);
   window.setInterval(()=>loadHistory().then(renderAll).catch(error=>console.error("History refresh failed:",error)),300000);
+
+  $("refreshBtn").addEventListener("click",()=>refreshCustomerData(true));
   $("logoutBtn").addEventListener("click",async()=>{
-    const apiBase=String(window.ENERGY_MONITOR_CONFIG.API_BASE_URL||"").replace(/\/+$/,"");
+    const portal=window.EnergyMonitorPortal;
     try{
-      await fetch(apiBase+"/auth/logout",{
-        method:"POST",credentials:"include",
-        headers:{"Accept":"application/json","X-CSRF-Token":window.energyCsrfToken||""}
-      });
-    }catch(error){console.warn("Logout request failed",error);}
+      await portal.request("logout",{sessionToken:portal.getSessionToken()});
+    }catch(error){
+      console.warn("Server logout failed:",error);
+    }
+    portal.clearSession();
     window.location.replace("login.html");
   });
 }
