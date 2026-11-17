@@ -33,7 +33,7 @@
       <button class="menu-btn" id="menuBtn" aria-label="Buka menu">☰</button>
       <div class="breadcrumb"><span>Portal Pelanggan</span><i>/</i><b id="pageTitle">Dashboard</b></div>
       <div class="top-actions">
-        <span class="demo-label"><i></i> DEMO</span>
+        <span class="demo-label"><i></i> TERHUBUNG</span>
         <button class="icon-btn" id="refreshBtn" title="Perbarui data">↻</button>
         <button class="logout-btn" id="logoutBtn" type="button">Keluar</button>
         <div class="customer-chip"><span class="avatar">DP</span><span><b id="headerCustomer">Pelanggan Demo</b><small id="headerCustomerId">CUS-0001</small></span></div>
@@ -82,7 +82,7 @@
         <div class="panel-heading"><div><h2>Informasi alat</h2><p class="muted">Perangkat yang ditautkan ke akun pelanggan ini</p></div><span class="status-pill online" id="deviceStatusDetail">ONLINE</span></div>
         <div class="device-detail-grid" id="deviceDetails"></div>
       </article>
-      <div class="demo-notice">ⓘ Tampilan ini masih menggunakan data simulasi. Data pelanggan dan perangkat akan diambil secara aman dari akun setelah backend diintegrasikan.</div>
+      <div class="demo-notice">ⓘ Data ditampilkan dari Google Sheets melalui Google Apps Script. Nilai hanya tersedia setelah perangkat mengirimkan pengukuran.</div>
     </section>
 
     <section class="page" id="page-realtime">
@@ -130,6 +130,7 @@
 </div>
 <div class="toast" id="toast" role="status"></div>
 <script src="js/config.js"></script>
+<script src="js/portal-api.js"></script>
 <script src="js/auth-guard.js"></script>
 <script src="js/app.js"></script>
 </body>
