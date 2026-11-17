@@ -1167,12 +1167,26 @@ function dispatchPortalAction_(request) {
   const action = requiredString_(request.action, "action");
 
   switch (action) {
-    case "ping":
+    case "ping": {
+      const spreadsheet = getSpreadsheet_();
+      const requiredSheets = [
+        EM_CONFIG.SHEETS.CUSTOMERS,
+        EM_CONFIG.SHEETS.DEVICES,
+        EM_CONFIG.SHEETS.MEASUREMENTS,
+        EM_CONFIG.SHEETS.SETTINGS
+      ];
+      const missingSheets = requiredSheets.filter(function(name) {
+        return !spreadsheet.getSheetByName(name);
+      });
       return {
         service: "Energy Monitor Portal API",
         status: "online",
+        database: missingSheets.length ? "incomplete" : "connected",
+        spreadsheetName: spreadsheet.getName(),
+        missingSheets: missingSheets,
         timestamp: new Date().toISOString()
       };
+    }
 
     case "login":
       return portalLogin_(request.username, request.password);
