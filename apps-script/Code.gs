@@ -744,12 +744,19 @@ function getDeviceMeasurementSummary_(deviceId, numberOfDays) {
   }
 
   const latestMeasurement = rows[rows.length - 1];
-  const today = new Date();
+  const todayKeyForRange = Utilities.formatDate(
+    new Date(),
+    "Asia/Jakarta",
+    "yyyy-MM-dd"
+  );
+  const todayParts = todayKeyForRange.split("-").map(Number);
+  const todayUtc = Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2]);
   const days = [];
 
   for (let offset = numberOfDays - 1; offset >= 0; offset--) {
-    const date = new Date(today.getTime());
-    date.setDate(date.getDate() - offset);
+    // Use UTC arithmetic so day keys remain correct regardless of
+    // the Apps Script project's configured timezone.
+    const date = new Date(todayUtc - offset * 24 * 60 * 60 * 1000);
     days.push({
       date: date,
       key: Utilities.formatDate(date, "Asia/Jakarta", "yyyy-MM-dd")
@@ -802,7 +809,8 @@ function getDeviceMeasurementSummary_(deviceId, numberOfDays) {
 
     const delta = Number(current.energy_kwh || 0) - Number(previous.energy_kwh || 0);
     if (delta >= 0) {
-      energyHourly[currentDate.getHours()] += delta;
+      const hour = Number(Utilities.formatDate(currentDate, "Asia/Jakarta", "H"));
+      energyHourly[hour] += delta;
     }
   }
 
