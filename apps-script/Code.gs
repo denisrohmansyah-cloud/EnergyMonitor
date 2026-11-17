@@ -519,44 +519,50 @@ function getCustomerAuthByUsername_(username) {
  */
 function createDevice_(payload) {
   const customerId = requiredString_(payload.customerId, "customerId");
-  const customer = findObject_(EM_CONFIG.SHEETS.CUSTOMERS, "customer_id", customerId);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
 
-  if (!customer || String(customer.status).toUpperCase() !== "ACTIVE") {
-    throw new Error("Pelanggan tidak ditemukan atau tidak aktif.");
+  try {
+    const customer = findObject_(EM_CONFIG.SHEETS.CUSTOMERS, "customer_id", customerId);
+    if (!customer || String(customer.status).toUpperCase() !== "ACTIVE") {
+      throw new Error("Pelanggan tidak ditemukan atau tidak aktif.");
+    }
+
+    const devices = getObjects_(getSheet_(EM_CONFIG.SHEETS.DEVICES));
+    const alreadyAssigned = devices.some(function(device) {
+      return String(device.customer_id) === customerId;
+    });
+
+    if (alreadyAssigned) {
+      throw new Error("Pelanggan ini sudah memiliki perangkat. Satu pelanggan hanya boleh memiliki satu alat.");
+    }
+
+    const deviceId = "EM-" + Utilities.getUuid().replace(/-/g, "").substring(0, 10).toUpperCase();
+    const deviceToken = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+    const now = new Date();
+
+    appendObjects_(getSheet_(EM_CONFIG.SHEETS.DEVICES), [{
+      device_id: deviceId,
+      customer_id: customerId,
+      device_name: String(payload.deviceName || "Energy Monitor"),
+      device_type: String(payload.deviceType || "ESP32 + Sensor Energi"),
+      location: String(payload.location || customer.location || ""),
+      device_token_hash: sha256Hex_(deviceToken),
+      status: "OFFLINE",
+      last_seen: "",
+      created_at: now,
+      updated_at: now
+    }]);
+
+    return {
+      deviceId: deviceId,
+      customerId: customerId,
+      deviceToken: deviceToken,
+      warning: "Simpan deviceToken ke firmware ESP32 dengan aman. Token asli tidak disimpan di spreadsheet dan tidak dapat ditampilkan kembali."
+    };
+  } finally {
+    lock.releaseLock();
   }
-
-  const devices = getObjects_(getSheet_(EM_CONFIG.SHEETS.DEVICES));
-  const alreadyAssigned = devices.some(function(device) {
-    return String(device.customer_id) === customerId;
-  });
-
-  if (alreadyAssigned) {
-    throw new Error("Pelanggan ini sudah memiliki perangkat. Satu pelanggan hanya boleh memiliki satu alat.");
-  }
-
-  const deviceId = "EM-" + Utilities.getUuid().replace(/-/g, "").substring(0, 10).toUpperCase();
-  const deviceToken = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
-  const now = new Date();
-
-  appendObjects_(getSheet_(EM_CONFIG.SHEETS.DEVICES), [{
-    device_id: deviceId,
-    customer_id: customerId,
-    device_name: String(payload.deviceName || "Energy Monitor"),
-    device_type: String(payload.deviceType || "ESP32 + Sensor Energi"),
-    location: String(payload.location || customer.location || ""),
-    device_token_hash: sha256Hex_(deviceToken),
-    status: "OFFLINE",
-    last_seen: "",
-    created_at: now,
-    updated_at: now
-  }]);
-
-  return {
-    deviceId: deviceId,
-    customerId: customerId,
-    deviceToken: deviceToken,
-    warning: "Simpan deviceToken ke firmware ESP32 dengan aman. Token asli tidak disimpan di spreadsheet dan tidak dapat ditampilkan kembali."
-  };
 }
 
 
@@ -751,8 +757,16 @@ function getLatestMeasurement_(deviceId) {
 
 function getMeasurementHistory_(payload) {
   const customerId = requiredString_(payload.customerId, "customerId");
-  const device = findObject_(EM_CONFIG.SHEETS.DEVICES, "customer_id", customerId);
+  const customerDevices = getObjects_(getSheet_(EM_CONFIG.SHEETS.DEVICES))
+    .filter(function(row) {
+      return String(row.customer_id) === customerId;
+    });
 
+  if (customerDevices.length > 1) {
+    throw new Error("Konflik data: akun pelanggan memiliki lebih dari satu perangkat.");
+  }
+
+  const device = customerDevices.length ? customerDevices[0] : null;
   if (!device) {
     return { customerId: customerId, deviceId: null, records: [] };
   }
