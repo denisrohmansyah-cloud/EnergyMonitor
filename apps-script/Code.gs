@@ -694,8 +694,9 @@ function getCustomerDashboard_(customerId) {
   }
 
   const device = customerDevices.length ? customerDevices[0] : null;
-  const latest = device ? getLatestMeasurement_(device.device_id) : null;
-  const energyTodayKwh = device ? getTodayEnergyForDevice_(device.device_id) : 0;
+  const summary = device
+    ? getDeviceMeasurementSummary_(device.device_id, 7)
+    : { latestMeasurement: null, energyDaily: [], energyHourly: [] };
 
   return {
     customer: {
@@ -715,17 +716,21 @@ function getCustomerDashboard_(customerId) {
       status: device.status,
       last_seen: device.last_seen
     } : null,
-    latestMeasurement: latest,
-    energyTodayKwh: energyTodayKwh
+    latestMeasurement: summary.latestMeasurement,
+    energyTodayKwh: summary.energyDaily.length
+      ? summary.energyDaily[summary.energyDaily.length - 1].energy_kwh
+      : 0,
+    energyDaily: summary.energyDaily,
+    energyHourly: summary.energyHourly
   };
 }
 
 /**
- * Menghitung konsumsi hari ini dari selisih meter energi kumulatif.
- * Jika belum ada pembacaan sebelum hari ini, baseline memakai pembacaan
- * pertama hari ini sehingga nilai awal tidak dianggap sebagai konsumsi hari ini.
+ * Reads the measurement tab once and calculates seven-day and 24-hour energy
+ * deltas from cumulative meter values. This avoids downloading thousands of
+ * records to the customer browser for charts.
  */
-function getTodayEnergyForDevice_(deviceId) {
+function getDeviceMeasurementSummary_(deviceId, numberOfDays) {
   const rows = getObjects_(getSheet_(EM_CONFIG.SHEETS.MEASUREMENTS))
     .filter(function(row) {
       return String(row.device_id) === String(deviceId);
@@ -734,30 +739,79 @@ function getTodayEnergyForDevice_(deviceId) {
       return new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime();
     });
 
-  if (!rows.length) return 0;
+  if (!rows.length) {
+    return { latestMeasurement: null, energyDaily: [], energyHourly: [] };
+  }
 
-  const todayKey = Utilities.formatDate(
-    new Date(),
-    "Asia/Jakarta",
-    "yyyy-MM-dd"
-  );
+  const latestMeasurement = rows[rows.length - 1];
+  const today = new Date();
+  const days = [];
 
-  const todayRows = rows.filter(function(row) {
-    return Utilities.formatDate(
-      new Date(row.measured_at),
-      "Asia/Jakarta",
-      "yyyy-MM-dd"
-    ) === todayKey;
+  for (let offset = numberOfDays - 1; offset >= 0; offset--) {
+    const date = new Date(today.getTime());
+    date.setDate(date.getDate() - offset);
+    days.push({
+      date: date,
+      key: Utilities.formatDate(date, "Asia/Jakarta", "yyyy-MM-dd")
+    });
+  }
+
+  const energyDaily = days.map(function(day) {
+    const readings = rows.filter(function(row) {
+      return Utilities.formatDate(
+        new Date(row.measured_at),
+        "Asia/Jakarta",
+        "yyyy-MM-dd"
+      ) === day.key;
+    });
+
+    if (!readings.length) {
+      return { date: day.key, energy_kwh: 0 };
+    }
+
+    const firstTime = new Date(readings[0].measured_at).getTime();
+    let previousReading = null;
+
+    for (let index = 0; index < rows.length; index++) {
+      const readingTime = new Date(rows[index].measured_at).getTime();
+      if (readingTime < firstTime) previousReading = rows[index];
+      else break;
+    }
+
+    const startEnergy = previousReading
+      ? Number(previousReading.energy_kwh || 0)
+      : Number(readings[0].energy_kwh || 0);
+    const endEnergy = Number(readings[readings.length - 1].energy_kwh || 0);
+
+    return {
+      date: day.key,
+      energy_kwh: Math.max(0, endEnergy - startEnergy)
+    };
   });
 
-  if (!todayRows.length) return 0;
+  const todayKey = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd");
+  const energyHourly = Array(24).fill(0);
 
-  const firstToday = Number(todayRows[0].energy_kwh || 0);
-  const latestToday = Number(todayRows[todayRows.length - 1].energy_kwh || 0);
+  for (let index = 1; index < rows.length; index++) {
+    const previous = rows[index - 1];
+    const current = rows[index];
+    const currentDate = new Date(current.measured_at);
+    const currentKey = Utilities.formatDate(currentDate, "Asia/Jakarta", "yyyy-MM-dd");
 
-  return Math.max(0, latestToday - firstToday);
+    if (currentKey !== todayKey) continue;
+
+    const delta = Number(current.energy_kwh || 0) - Number(previous.energy_kwh || 0);
+    if (delta >= 0) {
+      energyHourly[currentDate.getHours()] += delta;
+    }
+  }
+
+  return {
+    latestMeasurement: latestMeasurement,
+    energyDaily: energyDaily,
+    energyHourly: energyHourly
+  };
 }
-
 function getLatestMeasurement_(deviceId) {
   const rows = getObjects_(getSheet_(EM_CONFIG.SHEETS.MEASUREMENTS));
   for (let i = rows.length - 1; i >= 0; i--) {
