@@ -167,7 +167,7 @@ function applyDashboardSnapshot(snapshot){
   tariffPerKwh=Number(account.tariff_per_kwh||0);
 }
 async function loadHistory(){
-  const result=await apiGet("/history?limit=1000");
+  const result=await apiGet("/history?limit=12000");
   const records=Array.isArray(result.records)?result.records:[];
   const normalized=records.map(row=>({
     time:validDate(row.time)||new Date(0),
