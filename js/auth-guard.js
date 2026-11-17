@@ -22,6 +22,7 @@
     const payload=await response.json();
     const user=payload.user||payload.customer||payload;
     if(!user||typeof user!=="object")throw new Error("Respons autentikasi tidak valid.");
+    window.energyCsrfToken=user.csrfToken||payload.csrfToken||"";
     document.body.classList.remove("auth-pending");
     return user;
   })().catch(error=>{
