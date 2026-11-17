@@ -1,7 +1,7 @@
 (function(){
   const config=window.ENERGY_MONITOR_CONFIG||{};
   const sessionKey="energy_monitor_portal_session";
-  const timeoutMs=45000;
+  const timeoutMs=90000;
 
   function getSessionToken(){
     try{return sessionStorage.getItem(sessionKey)||"";}catch(error){return "";}
