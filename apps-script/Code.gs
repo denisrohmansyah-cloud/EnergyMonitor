@@ -1318,6 +1318,19 @@ function bytesToHex_(bytes) {
   }).join("");
 }
 
+function findCustomerByUsername_(username) {
+  const normalized = String(username || "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  const customers = getObjects_(getSheet_(EM_CONFIG.SHEETS.CUSTOMERS));
+  for (let index = 0; index < customers.length; index++) {
+    if (String(customers[index].username || "").trim().toLowerCase() === normalized) {
+      return customers[index];
+    }
+  }
+  return null;
+}
+
 function portalLogin_(username, password) {
   username = requiredString_(username, "username").toLowerCase();
   password = String(password || "");
@@ -1337,14 +1350,13 @@ function portalLogin_(username, password) {
     throw new Error("Terlalu banyak percobaan login. Coba lagi dalam 10 menit.");
   }
 
-  const customer = findObject_(
-    EM_CONFIG.SHEETS.CUSTOMERS,
-    "username",
-    username
-  );
+  // Username comparison is case-insensitive (e.g. PLG-01 and plg-01).
+  const customer = findCustomerByUsername_(username);
+  const customerStatus = String(customer && customer.status || "").trim().toUpperCase();
 
+  // Accept legacy Indonesian status "AKTIF"; the repair tool normalizes it to ACTIVE.
   const isValid = customer &&
-    String(customer.status || "").toUpperCase() === "ACTIVE" &&
+    (customerStatus === "ACTIVE" || customerStatus === "AKTIF") &&
     verifyPortalPassword_(password, customer.password_hash);
 
   if (!isValid) {
@@ -1534,7 +1546,7 @@ function repairCustomerAccountFromEditor() {
     return;
   }
 
-  const customer = findObject_(EM_CONFIG.SHEETS.CUSTOMERS, "username", username);
+  const customer = findCustomerByUsername_(username);
   if (!customer) {
     ui.alert("Akun tidak ditemukan", "Tidak ada pelanggan dengan username tersebut.", ui.ButtonSet.OK);
     return;
@@ -1557,7 +1569,7 @@ function repairCustomerAccountFromEditor() {
   lock.waitLock(10000);
   try {
     // Re-check under lock so the operation does not update a stale row.
-    const latestCustomer = findObject_(EM_CONFIG.SHEETS.CUSTOMERS, "username", username);
+    const latestCustomer = findCustomerByUsername_(username);
     if (!latestCustomer) throw new Error("Akun pelanggan tidak lagi ditemukan.");
 
     updateObjectByKey_(
