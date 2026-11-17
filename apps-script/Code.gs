@@ -97,8 +97,6 @@ function onOpen() {
     .addSeparator()
     .addItem("Tambah Pelanggan", "createCustomerFromEditor")
     .addItem("Hubungkan Perangkat", "assignDeviceToCustomerFromEditor")
-    .addSeparator()
-    .addItem("Atur API Key Backend (opsional)", "configureBackendApiKey")
     .addToUi();
 }
 
