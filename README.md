@@ -1,104 +1,149 @@
 # Energy Monitor — Portal Pelanggan
 
-Portal monitoring energi listrik untuk pelanggan. Setiap akun pelanggan dipasangkan dengan tepat satu alat monitoring. Dashboard hanya dapat dibuka setelah autentikasi berhasil melalui backend API.
+Energy Monitor adalah website pemantauan energi listrik untuk pelanggan. Satu akun pelanggan dipasangkan dengan tepat satu alat monitoring ESP32. Setiap pelanggan hanya dapat melihat data alat yang tertaut ke akunnya.
 
-## Status proyek
+## Arsitektur proyek
 
-**Frontend v1.2 — login UI dan route guard disiapkan.** Dashboard sekarang mengarahkan pengguna yang belum memiliki sesi ke halaman login. Namun autentikasi belum bisa digunakan sampai backend API tersedia dan dikonfigurasi. Tidak ada akun demo atau password yang ditanam di frontend.
+- Frontend: HTML, CSS, JavaScript, di-host melalui GitHub Pages.
+- Backend: Node.js + Express, bertugas memvalidasi login, membuat sesi, dan mengatur akses data.
+- Database: Google Sheets melalui Google Apps Script.
+- Perangkat: ESP32 + sensor energi; interval pengiriman yang direncanakan adalah 60 detik.
 
-## Google Sheets database (Apps Script)
+~~~text
+Pelanggan
+  |
+  v
+GitHub Pages (login + dashboard)
+  | HTTPS + HttpOnly session cookie
+  v
+Node.js / Express API
+  | server-side API key
+  v
+Google Apps Script
+  |
+  v
+Google Sheets
+  +-- Customers
+  +-- Devices
+  +-- Measurements
+  +-- Settings
 
-The Google Apps Script data layer is located at [`apps-script/Code.gs`](apps-script/Code.gs). It targets the owner's Google Sheets file and creates the following tabs when you run `setupEnergyMonitorDatabase()`:
+ESP32 -- HTTPS + device token --> Node.js API --> Apps Script --> Measurements
+~~~
 
-- `Customers`
-- `Devices`
-- `Measurements`
-- `Settings`
+## Struktur repository
 
-To install it, open the spreadsheet, select **Extensions → Apps Script**, replace the editor's `Code.gs` contents with the repository file, save, and run `setupEnergyMonitorDatabase()` once. Review and authorize the requested spreadsheet permissions. Re-running setup preserves rows and refuses to overwrite unexpected header structures.
-
-Then use the spreadsheet's **Energy Monitor → Atur API Key Backend** menu to store a long random shared key in Script Properties. Deploy Apps Script as a **Web app**, executing as the owner. The Node.js backend will call this data API with the key; never place that key in frontend JavaScript or share it with customers.
-
-The Apps Script file is the Sheets data layer, not the customer login server. Customer login/session endpoints (`/auth/login`, `/auth/me`, `/auth/logout`) still belong to the Node.js backend. Login uses username and password; email is optional contact information. The backend must enforce authorization and always derive the customer/device scope from the authenticated session.
-
-## File utama
-
-```text
+~~~text
 EnergyMonitor/
-├── index.html
-├── login.html
-├── css/
-│   └── style.css
-├── js/
-│   ├── config.js
-│   ├── auth-guard.js
-│   ├── login.js
-│   └── app.js
-└── README.md
-```
+|-- index.html
+|-- login.html
+|-- css/
+|   |-- style.css
+|-- js/
+|   |-- app.js
+|   |-- auth-guard.js
+|   |-- config.js
+|   |-- login.js
+|-- apps-script/
+|   |-- Code.gs
+|-- backend/
+    |-- .env.example
+    |-- .gitignore
+    |-- package.json
+    |-- README.md
+    |-- src/
+        |-- server.js
+~~~
 
-## Konfigurasi API
+## Status implementasi
 
-Edit `js/config.js` dan isi `API_BASE_URL` dengan URL backend API, termasuk prefix `/api`.
+- [x] Frontend portal pelanggan untuk satu alat per akun.
+- [x] Login username dan password pada frontend.
+- [x] Route guard dashboard dan tombol logout.
+- [x] Google Sheets schema: Customers, Devices, Measurements, Settings.
+- [x] Apps Script: membuat pelanggan/perangkat, mencari hash username, menerima pengukuran, mengambil dashboard dan riwayat.
+- [x] Backend Node.js: login bcrypt, sesi bertanda tangan dalam cookie HttpOnly, endpoint dashboard/history, admin provisioning, endpoint ingest ESP32.
+- [x] Frontend dashboard menggunakan API dan tidak lagi menghasilkan data simulasi.
+- [ ] Jalankan/migrasikan Apps Script di spreadsheet dan deploy Web App versi terbaru.
+- [ ] Deploy backend Node.js pada hosting HTTPS dan isi environment variables.
+- [ ] Isi URL backend pada js/config.js.
+- [ ] Buat akun pelanggan dan kaitkan satu perangkat ESP32.
+- [ ] Uji login, pemisahan data pelanggan, dan pengiriman data perangkat.
 
-Contoh:
+## 1. Google Sheets dan Apps Script
 
-```js
-window.ENERGY_MONITOR_CONFIG = {
-  API_BASE_URL: "https://api.domain-anda.com/api"
-};
-```
+Spreadsheet yang digunakan:
 
-Jangan masukkan password, API secret, token privat, atau kredensial database ke file frontend.
+[Energy Monitor Google Sheets](https://docs.google.com/spreadsheets/d/1syMXmoiHI3Z5qEqowWQeNwCziRbpHM8cDssWxY7maUQ/edit)
 
-## Kontrak endpoint autentikasi yang dibutuhkan
+1. Buka Extensions → Apps Script.
+2. Salin isi apps-script/Code.gs ke editor Apps Script.
+3. Simpan, pilih fungsi setupEnergyMonitorDatabase, lalu tekan Run dan berikan izin.
+4. Jalankan menu Energy Monitor → Atur API Key Backend dan masukkan random secret minimal 32 karakter.
+5. Pilih Deploy → Manage deployments → Edit atau buat deployment baru.
+6. Pilih tipe Web app, execute as Me, lalu atur akses agar backend dapat memanggilnya. Salin URL yang berakhiran /exec.
+7. Simpan URL tersebut sebagai APPS_SCRIPT_URL dan secret yang sama sebagai APPS_SCRIPT_API_KEY pada environment backend.
+
+Jika Apps Script sudah pernah di-deploy, perubahan Code.gs perlu dipublikasikan sebagai versi deployment baru agar endpoint getCustomerAuthByUsername dan ringkasan energi harian ikut aktif.
+
+## 2. Backend Node.js
+
+Baca backend/README.md.
+
+Ringkasan langkah:
+
+~~~bash
+cd backend
+npm install
+cp .env.example .env
+npm run check
+npm start
+~~~
+
+Atur environment variables pada .env. Jangan commit file tersebut.
+
+Endpoint penting:
 
 | Method | Endpoint | Fungsi |
 |---|---|---|
-| POST | `/auth/login` | Memvalidasi username dan password, lalu membuat sesi |
-| GET | `/auth/me` | Mengembalikan profil pengguna dan satu perangkat yang ditautkan |
-| POST | `/auth/logout` | Menghapus sesi login |
+| POST | /api/auth/login | Login username/password |
+| GET | /api/auth/me | Verifikasi sesi pelanggan |
+| POST | /api/auth/logout | Logout |
+| GET | /api/dashboard | Snapshot alat pelanggan |
+| GET | /api/history | Riwayat alat pelanggan |
+| POST | /api/admin/customers | Admin membuat akun |
+| POST | /api/admin/customers/:id/device | Admin mengaitkan satu alat |
+| POST | /api/device/measurements | ESP32 mengirim pengukuran |
 
-Login mengirim JSON `{ "username": "...", "password": "..." }`. Username bersifat unik dan tidak peka huruf besar/kecil; karakter yang diperbolehkan adalah huruf, angka, titik, garis bawah, dan tanda hubung (3-32 karakter). Email tetap dapat disimpan sebagai kontak, tetapi tidak digunakan untuk login. Server sebaiknya mengembalikan cookie sesi dengan atribut `HttpOnly; Secure; SameSite=None` bila frontend dan backend berada pada origin berbeda. Endpoint yang memakai cookie harus menerapkan perlindungan CSRF yang sesuai.
+## 3. GitHub Pages dan frontend
 
-Endpoint `/auth/me` diharapkan mengembalikan data seperti:
+Aktifkan GitHub Pages melalui Settings → Pages → Deploy from a branch → main → /(root).
 
-```json
-{
-  "user": {
-    "customer_id": "CUS-0001",
-    "username": "pelanggan01",
-    "full_name": "Nama Pelanggan",
-    "email": "pelanggan@example.com",
-    "location": "Instalasi Utama",
-    "tariff_per_kwh": 1444.7,
-    "device": {
-      "device_id": "EM-001",
-      "device_name": "Energy Meter",
-      "device_type": "ESP32 + Sensor Energi",
-      "location": "Instalasi Utama",
-      "status": "online",
-      "voltage": 220.8,
-      "current": 2.34,
-      "power": 510.7,
-      "energy_today": 3.284,
-      "energy_total": 184.296,
-      "frequency": 50.02,
-      "power_factor": 0.99,
-      "last_seen": "2026-11-15T07:00:00Z"
-    }
-  }
-}
-```
+Setelah backend online dengan HTTPS, ubah js/config.js:
 
-## Keamanan akses pelanggan
+~~~js
+window.ENERGY_MONITOR_CONFIG = {
+  API_BASE_URL: "https://URL-BACKEND-ANDA/api"
+};
+~~~
 
-- Satu akun pelanggan hanya dipasangkan dengan satu alat.
-- Relasi akun dan perangkat harus disimpan di database.
-- Backend wajib mengambil customer ID dari sesi login, bukan mempercayai ID yang dikirim browser.
-- Semua endpoint data pengukuran wajib memfilter berdasarkan perangkat milik pengguna yang sedang login.
-- Password disimpan dalam bentuk hash yang kuat di backend, bukan teks biasa.
-- Endpoint login perlu rate limiting dan validasi input.
-- CORS backend harus mengizinkan origin GitHub Pages yang tepat dan credentials; jangan gunakan wildcard origin bersama cookies.
+Origin frontend untuk CORS adalah:
 
-**Penting:** route guard di frontend hanya mengatur navigasi. Ia bukan mekanisme keamanan data. Perlindungan sebenarnya harus diberlakukan di backend pada setiap endpoint privat. GitHub Pages hanya meng-host file statis dan tidak menjalankan autentikasi server-side.
+~~~text
+https://denisrohmansyah-cloud.github.io
+~~~
+
+Jika backend dan GitHub Pages berada pada site berbeda, cookie perlu Secure=true dan SameSite=None. Sebagian browser membatasi third-party cookies; untuk layanan pelanggan produksi, gunakan custom domain sehingga frontend dan API berada di bawah site yang sama bila memungkinkan.
+
+## 4. Keamanan dan pembatasan data
+
+- Password pelanggan di-hash menggunakan bcrypt pada backend.
+- API key Apps Script dan admin key hanya berada di environment backend.
+- Sesi pelanggan menggunakan cookie HttpOnly bertanda tangan dan berumur terbatas.
+- ID pelanggan untuk endpoint dashboard/history selalu diambil dari sesi, bukan dari input browser.
+- Google Sheets membatasi satu perangkat untuk setiap customer.
+- Device token dibuat saat provisioning; hanya hash token yang disimpan di Sheets.
+- Setiap endpoint pengukuran memverifikasi device token.
+- HTTPS wajib digunakan untuk deployment publik.
+
+Catatan: signed cookie yang dicuri tetap berlaku sampai masa kedaluwarsanya berakhir. Gunakan HTTPS, masa sesi pendek, dan rotasi SESSION_SECRET untuk membatalkan seluruh sesi. Untuk pencabutan sesi individual, tambahkan session store server-side.
