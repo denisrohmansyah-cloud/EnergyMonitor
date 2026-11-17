@@ -140,7 +140,8 @@ Kolom voltage, current, activePower, energy, frequency, dan powerFactor wajib di
 - Apps Script Web App harus dapat diakses untuk memproses login; password tetap diverifikasi di server Apps Script dan disimpan sebagai hash, bukan teks biasa.
 - Rate limiting login diterapkan per username. Untuk penggunaan skala besar/risiko tinggi, gunakan penyedia autentikasi khusus dan database server-side.
 - Device token hanya diberikan satu kali ketika perangkat dibuat dan harus dirahasiakan di firmware.
-- Jangan membagikan API key opsional Apps Script atau device token melalui chat publik / repository.
+- API Key Backend yang sebelumnya dibuat tidak diperlukan oleh portal GitHub Pages saat ini dan tidak perlu dimasukkan ke js/config.js. Jalur portal memakai sesi pelanggan; ESP32 memakai device token masing-masing. API Key opsional tetap hanya untuk endpoint JSON legacy yang memerlukan backend tepercaya.
+- Jangan membagikan device token melalui chat publik / repository.
 - Pengguna harus login sebelum dashboard bisa diakses.
 
 ## Status implementasi
