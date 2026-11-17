@@ -94,7 +94,10 @@ function onOpen() {
     .addItem("Siapkan Database", "setupEnergyMonitorDatabase")
     .addItem("Tes Koneksi Database", "testDatabaseConnection")
     .addSeparator()
-    .addItem("Atur API Key Backend", "configureBackendApiKey")
+    .addItem("Tambah Pelanggan", "createCustomerFromEditor")
+    .addItem("Hubungkan Perangkat", "assignDeviceToCustomerFromEditor")
+    .addSeparator()
+    .addItem("Atur API Key Backend (opsional)", "configureBackendApiKey")
     .addToUi();
 }
 
@@ -311,6 +314,12 @@ function doGet() {
 }
 
 function doPost(e) {
+  // Public GitHub Pages portal submits a normal HTML form to avoid CORS
+  // preflight limitations in Apps Script Web Apps.
+  if (e && e.parameter && e.parameter.em_payload) {
+    return handlePortalFormRequest_(e.parameter.em_payload);
+  }
+
   try {
     const payload = parseRequestBody_(e);
     const action = String(payload.action || "").trim();
@@ -984,4 +993,443 @@ function sha256Hex_(value) {
     const normalized = (byte + 256) % 256;
     return ("0" + normalized.toString(16)).slice(-2);
   }).join("");
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* GITHUB PAGES CUSTOMER PORTAL API                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The GitHub Pages browser sends an ordinary HTML form POST containing
+ * em_payload. This avoids a CORS preflight request.
+ *
+ * Request body (inside the em_payload form field):
+ * {
+ *   "requestId": "random-correlation-id",
+ *   "action": "login | dashboard | history | logout",
+ *   "username": "...",
+ *   "password": "...",
+ *   "sessionToken": "..."
+ * }
+ */
+function handlePortalFormRequest_(rawPayload) {
+  let requestId = "";
+  let result;
+
+  try {
+    const request = JSON.parse(String(rawPayload || "{}"));
+    requestId = String(request.requestId || "");
+    if (!requestId || requestId.length > 120) {
+      throw new Error("Request ID tidak valid.");
+    }
+
+    result = {
+      ok: true,
+      data: dispatchPortalAction_(request)
+    };
+  } catch (error) {
+    result = {
+      ok: false,
+      message: error && error.message ? error.message : "Permintaan tidak dapat diproses."
+    };
+  }
+
+  return portalPostMessageHtml_(requestId, result);
+}
+
+/**
+ * Return a minimal HTML page inside the hidden iframe and post the response
+ * to its parent GitHub Pages window. The parent verifies both iframe source
+ * and the one-time request ID before accepting a response.
+ */
+function portalPostMessageHtml_(requestId, result) {
+  const message = {
+    channel: "ENERGY_MONITOR_PORTAL",
+    requestId: requestId,
+    result: result
+  };
+  const safeJson = JSON.stringify(message)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<script>window.parent.postMessage(' + safeJson + ', "*");</script>' +
+    '</body></html>';
+
+  return HtmlService.createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function dispatchPortalAction_(request) {
+  const action = requiredString_(request.action, "action");
+
+  switch (action) {
+    case "ping":
+      return {
+        service: "Energy Monitor Portal API",
+        status: "online",
+        timestamp: new Date().toISOString()
+      };
+
+    case "login":
+      return portalLogin_(request.username, request.password);
+
+    case "dashboard": {
+      const session = requirePortalSession_(request.sessionToken);
+      return getCustomerDashboard_(session.customerId);
+    }
+
+    case "history": {
+      const session = requirePortalSession_(request.sessionToken);
+      return getMeasurementHistory_({
+        customerId: session.customerId,
+        limit: request.limit || 1000,
+        from: request.from,
+        to: request.to
+      });
+    }
+
+    case "logout":
+      return portalLogout_(request.sessionToken);
+
+    default:
+      throw new Error("Action portal tidak dikenal.");
+  }
+}
+
+/* ------------------------- Password and sessions ------------------------- */
+
+const PORTAL_AUTH_CONFIG = Object.freeze({
+  PASSWORD_ITERATIONS: 120000,
+  SESSION_TTL_SECONDS: 7200,
+  LOGIN_MAX_ATTEMPTS: 8,
+  LOGIN_LOCK_SECONDS: 600
+});
+
+/**
+ * Password format:
+ * pbkdf2_sha256$iterations$salt$derivedKey
+ *
+ * A random pepper lives in Script Properties, not in the Google Sheet.
+ * This is the Apps Script-only login scheme for this GitHub Pages deployment.
+ */
+function getOrCreatePasswordPepper_() {
+  const properties = PropertiesService.getScriptProperties();
+  let pepper = properties.getProperty("PORTAL_PASSWORD_PEPPER");
+
+  if (!pepper) {
+    pepper = Utilities.getUuid().replace(/-/g, "") +
+      Utilities.getUuid().replace(/-/g, "");
+    properties.setProperty("PORTAL_PASSWORD_PEPPER", pepper);
+  }
+
+  return pepper;
+}
+
+function createPortalPasswordHash_(password) {
+  password = String(password || "");
+  if (password.length < 10 || password.length > 200) {
+    throw new Error("Password pelanggan harus 10-200 karakter.");
+  }
+
+  const salt = Utilities.getUuid().replace(/-/g, "") +
+    Utilities.getUuid().replace(/-/g, "");
+  const iterations = PORTAL_AUTH_CONFIG.PASSWORD_ITERATIONS;
+  const derivedKey = pbkdf2HmacSha256_(
+    password,
+    salt,
+    iterations,
+    getOrCreatePasswordPepper_()
+  );
+
+  return "pbkdf2_sha256$" + iterations + "$" + salt + "$" + derivedKey;
+}
+
+function verifyPortalPassword_(password, storedHash) {
+  const parts = String(storedHash || "").split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") return false;
+
+  const iterations = Number(parts[1]);
+  const salt = parts[2];
+  const expected = parts[3];
+
+  if (!Number.isInteger(iterations) || iterations < 10000 || iterations > 300000 ||
+      !salt || !/^[a-f0-9]{64}$/i.test(expected)) {
+    return false;
+  }
+
+  const actual = pbkdf2HmacSha256_(
+    String(password || ""),
+    salt,
+    iterations,
+    getOrCreatePasswordPepper_()
+  );
+
+  return constantTimeEquals_(actual, expected);
+}
+
+/**
+ * PBKDF2-HMAC-SHA256, one 32-byte block.
+ * HMAC is computed by Apps Script Utilities, not by a custom hash routine.
+ */
+function pbkdf2HmacSha256_(password, salt, iterations, pepper) {
+  const passwordBytes = Utilities.newBlob(
+    String(password) + "\u0000" + String(pepper)
+  ).getBytes();
+
+  const saltBytes = Utilities.newBlob(String(salt)).getBytes();
+  const blockOne = saltBytes.concat([0, 0, 0, 1]);
+
+  let u = Utilities.computeHmacSha256Signature(blockOne, passwordBytes);
+  const derived = u.slice();
+
+  for (let iteration = 1; iteration < iterations; iteration++) {
+    u = Utilities.computeHmacSha256Signature(u, passwordBytes);
+
+    for (let byteIndex = 0; byteIndex < derived.length; byteIndex++) {
+      derived[byteIndex] = derived[byteIndex] ^ u[byteIndex];
+    }
+  }
+
+  return bytesToHex_(derived);
+}
+
+function bytesToHex_(bytes) {
+  return bytes.map(function(value) {
+    const normalized = (value + 256) % 256;
+    return ("0" + normalized.toString(16)).slice(-2);
+  }).join("");
+}
+
+function portalLogin_(username, password) {
+  username = requiredString_(username, "username").toLowerCase();
+  password = String(password || "");
+
+  if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+    throw new Error("Username atau password tidak valid.");
+  }
+  if (!password || password.length > 200) {
+    throw new Error("Username atau password tidak valid.");
+  }
+
+  const cache = CacheService.getScriptCache();
+  const attemptsKey = "em_login_attempts_" + sha256Hex_(username);
+  const attempts = Number(cache.get(attemptsKey) || 0);
+
+  if (attempts >= PORTAL_AUTH_CONFIG.LOGIN_MAX_ATTEMPTS) {
+    throw new Error("Terlalu banyak percobaan login. Coba lagi dalam 10 menit.");
+  }
+
+  const customer = findObject_(
+    EM_CONFIG.SHEETS.CUSTOMERS,
+    "username",
+    username
+  );
+
+  const isValid = customer &&
+    String(customer.status || "").toUpperCase() === "ACTIVE" &&
+    verifyPortalPassword_(password, customer.password_hash);
+
+  if (!isValid) {
+    cache.put(
+      attemptsKey,
+      String(attempts + 1),
+      PORTAL_AUTH_CONFIG.LOGIN_LOCK_SECONDS
+    );
+    throw new Error("Username atau password tidak valid.");
+  }
+
+  cache.remove(attemptsKey);
+
+  const token = Utilities.getUuid().replace(/-/g, "") +
+    Utilities.getUuid().replace(/-/g, "");
+  const session = {
+    customerId: String(customer.customer_id),
+    username: String(customer.username),
+    expiresAt: Date.now() + PORTAL_AUTH_CONFIG.SESSION_TTL_SECONDS * 1000
+  };
+
+  cache.put(
+    "em_portal_session_" + sha256Hex_(token),
+    JSON.stringify(session),
+    PORTAL_AUTH_CONFIG.SESSION_TTL_SECONDS
+  );
+
+  return {
+    sessionToken: token,
+    expiresIn: PORTAL_AUTH_CONFIG.SESSION_TTL_SECONDS,
+    customer: {
+      customer_id: customer.customer_id,
+      username: customer.username,
+      full_name: customer.full_name
+    }
+  };
+}
+
+function requirePortalSession_(sessionToken) {
+  sessionToken = requiredString_(sessionToken, "sessionToken");
+  if (sessionToken.length > 200) throw new Error("Sesi tidak valid.");
+
+  const key = "em_portal_session_" + sha256Hex_(sessionToken);
+  const stored = CacheService.getScriptCache().get(key);
+  if (!stored) throw new Error("Sesi berakhir. Silakan login kembali.");
+
+  let session;
+  try {
+    session = JSON.parse(stored);
+  } catch (error) {
+    CacheService.getScriptCache().remove(key);
+    throw new Error("Sesi tidak valid.");
+  }
+
+  if (!session.customerId || Date.now() >= Number(session.expiresAt || 0)) {
+    CacheService.getScriptCache().remove(key);
+    throw new Error("Sesi berakhir. Silakan login kembali.");
+  }
+
+  return session;
+}
+
+function portalLogout_(sessionToken) {
+  sessionToken = requiredString_(sessionToken, "sessionToken");
+  CacheService.getScriptCache().remove(
+    "em_portal_session_" + sha256Hex_(sessionToken)
+  );
+  return { message: "Logout berhasil." };
+}
+
+
+/* ----------------------- Admin account provisioning ---------------------- */
+
+/**
+ * Jalankan dari Apps Script Editor atau menu Energy Monitor.
+ * Password tidak ditampilkan kembali dan hanya hash PBKDF2 yang disimpan.
+ */
+function createCustomerFromEditor() {
+  const ui = SpreadsheetApp.getUi();
+
+  const usernameResponse = ui.prompt(
+    "Tambah Pelanggan",
+    "Masukkan username (3-32 karakter, huruf kecil, angka, titik, _ atau -).",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (usernameResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const username = String(usernameResponse.getResponseText() || "").trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+    ui.alert("Username tidak valid.");
+    return;
+  }
+
+  const nameResponse = ui.prompt("Nama Pelanggan", "Masukkan nama lengkap pelanggan.", ui.ButtonSet.OK_CANCEL);
+  if (nameResponse.getSelectedButton() !== ui.Button.OK) return;
+  const fullName = requiredString_(nameResponse.getResponseText(), "Nama pelanggan");
+
+  const emailResponse = ui.prompt("Email Kontak", "Masukkan email (opsional).", ui.ButtonSet.OK_CANCEL);
+  if (emailResponse.getSelectedButton() !== ui.Button.OK) return;
+  const email = String(emailResponse.getResponseText() || "").trim().toLowerCase();
+
+  const locationResponse = ui.prompt("Lokasi", "Masukkan lokasi pemasangan.", ui.ButtonSet.OK_CANCEL);
+  if (locationResponse.getSelectedButton() !== ui.Button.OK) return;
+  const location = String(locationResponse.getResponseText() || "").trim();
+
+  const tariffResponse = ui.prompt("Tarif Listrik", "Masukkan tarif per kWh dalam Rupiah (contoh 1444.70).", ui.ButtonSet.OK_CANCEL);
+  if (tariffResponse.getSelectedButton() !== ui.Button.OK) return;
+  const tariff = Number(tariffResponse.getResponseText());
+  if (!isFinite(tariff) || tariff < 0) {
+    ui.alert("Tarif listrik tidak valid.");
+    return;
+  }
+
+  const passwordResponse = ui.prompt(
+    "Password Pelanggan",
+    "Masukkan password awal minimal 10 karakter. Berikan password ini kepada pelanggan melalui saluran terpisah.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (passwordResponse.getSelectedButton() !== ui.Button.OK) return;
+  const password = String(passwordResponse.getResponseText() || "");
+  if (password.length < 10 || password.length > 200) {
+    ui.alert("Password harus 10-200 karakter.");
+    return;
+  }
+
+  const sheet = getSheet_(EM_CONFIG.SHEETS.CUSTOMERS);
+  const rows = getObjects_(sheet);
+  if (rows.some(function(row) {
+    return String(row.username || "").toLowerCase() === username;
+  })) {
+    ui.alert("Username sudah digunakan.");
+    return;
+  }
+
+  if (email && rows.some(function(row) {
+    return String(row.email || "").toLowerCase() === email;
+  })) {
+    ui.alert("Email sudah digunakan.");
+    return;
+  }
+
+  const customerId = "CUS-" + Utilities.getUuid().replace(/-/g, "").substring(0, 10).toUpperCase();
+  const now = new Date();
+
+  appendObjects_(sheet, [{
+    customer_id: customerId,
+    username: username,
+    full_name: fullName,
+    email: email,
+    password_hash: createPortalPasswordHash_(password),
+    status: "ACTIVE",
+    location: location,
+    tariff_per_kwh: tariff,
+    created_at: now,
+    updated_at: now
+  }]);
+
+  ui.alert(
+    "Pelanggan berhasil dibuat",
+    "Customer ID: " + customerId + "\nUsername: " + username + "\nSatu perangkat dapat ditautkan melalui menu Energy Monitor.",
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * Membuat tepat satu alat untuk pelanggan. Device token ditampilkan satu kali.
+ */
+function assignDeviceToCustomerFromEditor() {
+  const ui = SpreadsheetApp.getUi();
+
+  const customerResponse = ui.prompt(
+    "Hubungkan Perangkat",
+    "Masukkan Customer ID, misalnya CUS-XXXXXXXXXX.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (customerResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const nameResponse = ui.prompt("Nama Perangkat", "Masukkan nama alat.", ui.ButtonSet.OK_CANCEL);
+  if (nameResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const typeResponse = ui.prompt("Jenis Perangkat", "Contoh: ESP32 + Sensor Energi.", ui.ButtonSet.OK_CANCEL);
+  if (typeResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const locationResponse = ui.prompt("Lokasi Perangkat", "Masukkan lokasi alat.", ui.ButtonSet.OK_CANCEL);
+  if (locationResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const created = createDevice_({
+    customerId: String(customerResponse.getResponseText() || "").trim(),
+    deviceName: String(nameResponse.getResponseText() || "").trim(),
+    deviceType: String(typeResponse.getResponseText() || "").trim(),
+    location: String(locationResponse.getResponseText() || "").trim()
+  });
+
+  ui.alert(
+    "Perangkat berhasil ditautkan",
+    "Device ID: " + created.deviceId +
+    "\nCustomer ID: " + created.customerId +
+    "\n\nDEVICE TOKEN (salin sekarang ke firmware ESP32):\n" + created.deviceToken +
+    "\n\nToken tidak dapat ditampilkan ulang.",
+    ui.ButtonSet.OK
+  );
 }
