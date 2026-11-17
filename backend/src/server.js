@@ -368,7 +368,7 @@ app.get(API_PREFIX + "/dashboard", requireSession, asyncRoute(async (req, res) =
 }));
 
 app.get(API_PREFIX + "/history", requireSession, asyncRoute(async (req, res) => {
-  const limit = Math.min(1000, Math.max(1, Number.parseInt(req.query.limit || "100", 10) || 100));
+  const limit = Math.min(12000, Math.max(1, Number.parseInt(req.query.limit || "100", 10) || 100));
   const from = req.query.from ? String(req.query.from) : undefined;
   const to = req.query.to ? String(req.query.to) : undefined;
   const raw = await sheetsRequest("getMeasurementHistory", {
