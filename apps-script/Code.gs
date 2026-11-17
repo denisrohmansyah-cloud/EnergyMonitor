@@ -317,7 +317,11 @@ function doPost(e) {
   // Public GitHub Pages portal submits a normal HTML form to avoid CORS
   // preflight limitations in Apps Script Web Apps.
   if (e && e.parameter && e.parameter.em_payload) {
-    return handlePortalFormRequest_(e.parameter.em_payload);
+    const origin = String(e.parameter.em_origin || "");
+    if (!isPortalOriginAllowed_(origin)) {
+      return HtmlService.createHtmlOutput("Origin tidak diizinkan.");
+    }
+    return handlePortalFormRequest_(e.parameter.em_payload, origin);
   }
 
   try {
@@ -1013,7 +1017,18 @@ function sha256Hex_(value) {
  *   "sessionToken": "..."
  * }
  */
-function handlePortalFormRequest_(rawPayload) {
+function isPortalOriginAllowed_(origin) {
+  const allowed = [
+    "https://denisrohmansyah-cloud.github.io",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+  ];
+  return allowed.indexOf(String(origin || "")) !== -1;
+}
+
+function handlePortalFormRequest_(rawPayload, targetOrigin) {
   let requestId = "";
   let result;
 
@@ -1035,7 +1050,7 @@ function handlePortalFormRequest_(rawPayload) {
     };
   }
 
-  return portalPostMessageHtml_(requestId, result);
+  return portalPostMessageHtml_(requestId, result, targetOrigin);
 }
 
 /**
@@ -1043,7 +1058,7 @@ function handlePortalFormRequest_(rawPayload) {
  * to its parent GitHub Pages window. The parent verifies both iframe source
  * and the one-time request ID before accepting a response.
  */
-function portalPostMessageHtml_(requestId, result) {
+function portalPostMessageHtml_(requestId, result, targetOrigin) {
   const message = {
     channel: "ENERGY_MONITOR_PORTAL",
     requestId: requestId,
@@ -1054,9 +1069,10 @@ function portalPostMessageHtml_(requestId, result) {
     .replace(/>/g, "\\u003e")
     .replace(/&/g, "\\u0026");
 
+  const safeOrigin = JSON.stringify(String(targetOrigin || ""));
   const html =
     '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
-    '<script>window.parent.postMessage(' + safeJson + ', "*");</script>' +
+    '<script>window.parent.postMessage(' + safeJson + ', ' + safeOrigin + ');</script>' +
     '</body></html>';
 
   return HtmlService.createHtmlOutput(html)
