@@ -1,7 +1,7 @@
 (function(){
   const config=window.ENERGY_MONITOR_CONFIG||{};
   const sessionKey="energy_monitor_portal_session";
-  const timeoutMs=90000;
+  const timeoutMs=30000;
 
   function getSessionToken(){
     try{return sessionStorage.getItem(sessionKey)||"";}catch(error){return "";}
@@ -84,7 +84,7 @@
         finish(resolve,result.data);
       };
       const timer=window.setTimeout(()=>{
-        finish(reject,new Error("Google Apps Script tidak merespons dalam 45 detik. Periksa deployment Web App dan versi Code.gs."));
+        finish(reject,new Error("Google Apps Script tidak merespons dalam 30 detik. Periksa deployment Web App dan versi Code.gs."));
       },timeoutMs);
 
       window.addEventListener("message",onMessage);
