@@ -205,7 +205,9 @@ function showPage(page){
   const titles={dashboard:"Dashboard",realtime:"Real-time",analytics:"Analitik Energi",history:"Riwayat Pengukuran",account:"Profil Pelanggan"};
   $("pageTitle").textContent=titles[page]||"Dashboard";
   $("sidebar").classList.remove("open");
-  if(page==="history")renderHistory();
+  if(page==="history"||page==="analytics"){
+    loadHistory().then(renderAll).catch(error=>{console.error(error);notify("Riwayat belum dapat dimuat.");});
+  }
 }
 function exportCSV(){
   const header=["Waktu","Tegangan_V","Arus_A","Daya_W","Energi_kWh","Frekuensi_Hz","Power_Factor"];
@@ -218,7 +220,7 @@ function exportCSV(){
 document.querySelectorAll(".nav-link").forEach(link=>link.addEventListener("click",()=>showPage(link.dataset.page)));
 window.addEventListener("hashchange",()=>showPage(location.hash.slice(1)||"dashboard"));
 $("menuBtn").addEventListener("click",()=>$("sidebar").classList.toggle("open"));
-$("refreshBtn").addEventListener("click",refreshCustomerData);
+$("refreshBtn").addEventListener("click",()=>refreshCustomerData(true));
 $("exportBtn").addEventListener("click",exportCSV);
 $("todayLabel").textContent=new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 $("footerYear").textContent=new Date().getFullYear();
@@ -234,6 +236,7 @@ async function startCustomerDashboard(){
   await loadHistory();
   renderAll();
   window.setInterval(refreshCustomerData,intervalSeconds*1000);
+  window.setInterval(()=>loadHistory().then(renderAll).catch(error=>console.error("History refresh failed:",error)),300000);
   $("logoutBtn").addEventListener("click",async()=>{
     const apiBase=String(window.ENERGY_MONITOR_CONFIG.API_BASE_URL||"").replace(/\/+$/,"");
     try{
