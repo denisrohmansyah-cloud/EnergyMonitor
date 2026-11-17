@@ -1,5 +1,7 @@
 const intervalSeconds=60;
 const history=[];
+let energyDaily=Array(7).fill(0);
+let energyHourly=Array(24).fill(0);
 let customer={id:"",name:"Pelanggan",email:"",location:"-",device:null};
 let tariffPerKwh=0;
 let d={id:"",name:"Belum ada alat terdaftar",type:"ESP32 + Sensor Energi",location:"-",status:"offline",voltage:0,current:0,power:0,energyToday:0,energyTotal:0,frequency:0,pf:0,lastSeen:new Date(0)};
@@ -40,32 +42,10 @@ function updateHeader(){
   $("lastUpdatedBanner").textContent="Pembaruan terakhir: "+(d.lastSeen.getTime()>0?d.lastSeen.toLocaleTimeString("id-ID"):"Belum ada pengukuran");
 }
 function calculateDailyUsage(){
-  const result=Array(7).fill(0);
-  const days=[];
-  for(let i=6;i>=0;i--){
-    const date=new Date();date.setHours(0,0,0,0);date.setDate(date.getDate()-i);days.push(date);
-  }
-  const rows=history.slice().sort((a,b)=>a.time-b.time);
-  for(let i=1;i<rows.length;i++){
-    const prev=rows[i-1],current=rows[i];
-    const delta=Number(current.energy||0)-Number(prev.energy||0);
-    if(delta<0)continue;
-    const dayIndex=days.findIndex(day=>day.toDateString()===current.time.toDateString());
-    if(dayIndex>=0)result[dayIndex]+=delta;
-  }
-  return result;
+  return energyDaily.length===7?energyDaily.slice():Array(7).fill(0);
 }
 function calculateHourlyUsage(){
-  const result=Array(24).fill(0);
-  const today=new Date().toDateString();
-  const rows=history.slice().sort((a,b)=>a.time-b.time);
-  for(let i=1;i<rows.length;i++){
-    const prev=rows[i-1],current=rows[i];
-    if(current.time.toDateString()!==today)continue;
-    const delta=Number(current.energy||0)-Number(prev.energy||0);
-    if(delta>=0)result[current.time.getHours()]+=delta;
-  }
-  return result;
+  return energyHourly.length===24?energyHourly.slice():Array(24).fill(0);
 }
 function updateMetrics(){
   $("voltage").textContent=fmt(d.voltage,1);
@@ -187,9 +167,15 @@ function applyDashboardSnapshot(snapshot){
   };
   d=customer.device;
   tariffPerKwh=Number(account.tariff_per_kwh||0);
+  energyDaily=Array.isArray(snapshot.energyDaily)
+    ? snapshot.energyDaily.map(item=>Number(item.energy_kwh||0))
+    : Array(7).fill(0);
+  energyHourly=Array.isArray(snapshot.energyHourly)
+    ? snapshot.energyHourly.map(value=>Number(value||0))
+    : Array(24).fill(0);
 }
 async function loadHistory(){
-  const result=await apiGet("/history?limit=12000");
+  const result=await apiGet("/history?limit=1000");
   const records=Array.isArray(result.records)?result.records:[];
   const normalized=records.map(row=>({
     time:validDate(row.measured_at||row.time)||new Date(0),
