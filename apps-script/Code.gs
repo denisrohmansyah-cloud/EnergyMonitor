@@ -1173,7 +1173,7 @@ function portalPostMessageHtml_(requestId, result, targetOrigin) {
   const safeOrigin = JSON.stringify(String(targetOrigin || ""));
   const html =
     '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
-    '<script>window.parent.postMessage(' + safeJson + ', ' + safeOrigin + ');</script>' +
+    '<script>window.top.postMessage(' + safeJson + ', ' + safeOrigin + ');</script>' +
     '</body></html>';
 
   return HtmlService.createHtmlOutput(html)
