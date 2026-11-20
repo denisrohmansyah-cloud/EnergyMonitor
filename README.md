@@ -26,7 +26,7 @@ Customers | Devices | Measurements | Settings
 ESP32 -- HTTPS POST + device token --> Apps Script --> Measurements
 ~~~
 
-Komunikasi browser menggunakan form POST ke iframe dan pesan balasan dari Apps Script. Pola ini menghindari kebutuhan CORS preflight biasa. Apps Script membatasi origin portal ke GitHub Pages proyek ini dan alamat localhost untuk pengembangan.
+Pemeriksaan kesehatan publik memakai JSONP GET non-sensitif. Login, sesi, dashboard, dan riwayat memakai form POST ke iframe dan balasan postMessage dari Apps Script. Password tidak pernah dimasukkan ke URL. Pola ini menghindari kebutuhan CORS preflight biasa. Apps Script membatasi origin portal ke GitHub Pages proyek ini dan alamat localhost untuk pengembangan.
 
 ## Repository files
 
