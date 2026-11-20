@@ -33,6 +33,7 @@
         return;
       }
       testButton.disabled=true;
+      button.disabled=true;
       testButton.textContent="Menguji koneksi...";
       connectionMessage.classList.remove("show");
       try{
@@ -47,6 +48,7 @@
         connectionMessage.className="auth-message-box error show";
       }finally{
         testButton.disabled=false;
+        button.disabled=false;
         testButton.textContent="Tes Koneksi Apps Script";
       }
     });
@@ -65,7 +67,9 @@
       showMessage("Komponen komunikasi Google Apps Script belum dimuat.","error");
       return;
     }
+    if(button.disabled)return;
     button.disabled=true;
+    if(testButton)testButton.disabled=true;
     button.textContent="Memeriksa akun...";
     message.classList.remove("show");
     try{
@@ -82,6 +86,7 @@
       portal.clearSession();
       showMessage(error.message||"Username atau password tidak valid. Coba lagi.","error");
       button.disabled=false;
+      if(testButton)testButton.disabled=false;
       button.textContent="Masuk ke Dashboard";
     }
   });
