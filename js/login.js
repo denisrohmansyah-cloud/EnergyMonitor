@@ -6,6 +6,8 @@
   const testButton=document.getElementById("testConnectionBtn");
   const connectionMessage=document.getElementById("connectionMessage");
   const portal=window.EnergyMonitorPortal;
+  let loginInProgress=false;
+  let testInProgress=false;
 
   function showMessage(text,type){
     message.textContent=text;
@@ -32,8 +34,9 @@
         connectionMessage.className="auth-message-box error show";
         return;
       }
+      if(testInProgress||loginInProgress)return;
+      testInProgress=true;
       testButton.disabled=true;
-      button.disabled=true;
       testButton.textContent="Menguji koneksi...";
       connectionMessage.classList.remove("show");
       try{
@@ -47,8 +50,8 @@
         connectionMessage.textContent=error.message||"Koneksi Apps Script gagal.";
         connectionMessage.className="auth-message-box error show";
       }finally{
+        testInProgress=false;
         testButton.disabled=false;
-        button.disabled=false;
         testButton.textContent="Tes Koneksi Apps Script";
       }
     });
@@ -67,7 +70,8 @@
       showMessage("Komponen komunikasi Google Apps Script belum dimuat.","error");
       return;
     }
-    if(button.disabled)return;
+    if(loginInProgress||testInProgress)return;
+    loginInProgress=true;
     button.disabled=true;
     if(testButton)testButton.disabled=true;
     button.textContent="Memeriksa akun...";
@@ -85,6 +89,7 @@
     }catch(error){
       portal.clearSession();
       showMessage(error.message||"Username atau password tidak valid. Coba lagi.","error");
+      loginInProgress=false;
       button.disabled=false;
       if(testButton)testButton.disabled=false;
       button.textContent="Masuk ke Dashboard";
