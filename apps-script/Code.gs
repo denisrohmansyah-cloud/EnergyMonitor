@@ -305,8 +305,32 @@ function constantTimeEquals_(a, b) {
 /* -------------------------------------------------------------------------- */
 
 function doGet(e) {
-  // A simple browser diagnostic: open the /exec URL and confirm this JSON
-  // appears. It checks the deployment version and required database tabs.
+  // JSONP is used only for a public, non-sensitive health check. Login,
+  // dashboard, and history data continue to use POST form submissions.
+  if (e && e.parameter && e.parameter.em_ping === "1") {
+    const requestId = String(e.parameter.requestId || "");
+    if (!/^[a-f0-9]{48}$/i.test(requestId)) {
+      return ContentService.createTextOutput(
+        "window.EnergyMonitorPortalPingCallback({ok:false,message:'Invalid request ID'});"
+      ).setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+
+    const health = getPortalHealth_();
+    const response = {
+      channel: "ENERGY_MONITOR_PING",
+      requestId: requestId,
+      result: health
+    };
+    return ContentService.createTextOutput(
+      "window.EnergyMonitorPortalPingCallback(" + JSON.stringify(response) + ");"
+    ).setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  // Direct /exec browser check returns readable JSON.
+  return jsonOutput_(getPortalHealth_());
+}
+
+function getPortalHealth_() {
   const spreadsheet = getSpreadsheet_();
   const requiredSheets = [
     EM_CONFIG.SHEETS.CUSTOMERS,
@@ -318,16 +342,16 @@ function doGet(e) {
     return !spreadsheet.getSheetByName(name);
   });
 
-  return jsonOutput_({
+  return {
     ok: true,
     service: "Energy Monitor Portal API",
-    version: "github-pages-apps-script-v2",
+    version: "github-pages-apps-script-v3",
     deployment: "active",
     database: missingSheets.length ? "incomplete" : "connected",
     spreadsheet: spreadsheet.getName(),
     missingSheets: missingSheets,
     timestamp: new Date().toISOString()
-  });
+  };
 }
 
 function doPost(e) {
