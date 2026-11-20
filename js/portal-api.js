@@ -26,6 +26,7 @@
     if(!endpoint||!/^https:\/\/script\.google\.com\/macros\/s\//.test(endpoint)){
       return Promise.reject(new Error("URL Google Apps Script belum dikonfigurasi di js/config.js."));
     }
+
     const requestId=makeRequestId();
     const frameName="em_portal_frame_"+requestId;
     const frame=document.createElement("iframe");
@@ -33,7 +34,9 @@
     frame.title="Energy Monitor API";
     frame.setAttribute("aria-hidden","true");
     frame.tabIndex=-1;
+    frame.src="about:blank";
     frame.style.cssText="position:absolute;width:1px;height:1px;left:-9999px;border:0";
+
     const form=document.createElement("form");
     form.method="POST";
     form.action=endpoint;
@@ -45,7 +48,6 @@
       action:action,
       requestId:requestId
     });
-
     const fields={
       em_payload:JSON.stringify(payload),
       em_origin:window.location.origin
@@ -60,9 +62,14 @@
 
     return new Promise((resolve,reject)=>{
       let settled=false;
+      let submitted=false;
+      let responseLoadTimer=null;
+
       const cleanup=()=>{
         window.removeEventListener("message",onMessage);
+        frame.removeEventListener("load",onFrameLoad);
         window.clearTimeout(timer);
+        if(responseLoadTimer)window.clearTimeout(responseLoadTimer);
         form.remove();
         frame.remove();
       };
@@ -83,15 +90,39 @@
         }
         finish(resolve,result.data);
       };
+      const onFrameLoad=()=>{
+        if(!submitted){
+          submitted=true;
+          try{
+            form.submit();
+          }catch(error){
+            finish(reject,new Error("Form tidak dapat dikirim ke Google Apps Script: "+error.message));
+          }
+          return;
+        }
+
+        // The iframe loaded a response page but the Apps Script bridge did
+        // not post a message. This usually means an old deployment, a Google
+        // sign-in/permission page, or a runtime error in doPost().
+        responseLoadTimer=window.setTimeout(()=>{
+          finish(reject,new Error(
+            "Apps Script membuka halaman tetapi tidak mengirim respons portal. " +
+            "Periksa Deploy > Manage deployments: gunakan Web app, Execute as Me, " +
+            "Who has access Anyone, lalu deploy New version dari Code.gs terbaru."
+          ));
+        },1500);
+      };
       const timer=window.setTimeout(()=>{
-        finish(reject,new Error("Google Apps Script tidak merespons dalam 30 detik. Periksa deployment Web App dan versi Code.gs."));
-      },timeoutMs);
+        finish(reject,new Error(
+          "Apps Script tidak merespons. Buka URL /exec langsung untuk memastikan Web App dapat diakses, " +
+          "lalu periksa deployment terbaru dan izin akses Anyone."
+        ));
+      },30000);
 
       window.addEventListener("message",onMessage);
+      frame.addEventListener("load",onFrameLoad);
       document.body.appendChild(frame);
       document.body.appendChild(form);
-      try{form.submit();}
-      catch(error){finish(reject,error);}
     });
   }
 
