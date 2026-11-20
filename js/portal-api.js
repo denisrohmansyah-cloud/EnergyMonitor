@@ -34,7 +34,6 @@
     frame.title="Energy Monitor API";
     frame.setAttribute("aria-hidden","true");
     frame.tabIndex=-1;
-    frame.src="about:blank";
     frame.style.cssText="position:absolute;width:1px;height:1px;left:-9999px;border:0";
 
     const form=document.createElement("form");
@@ -62,14 +61,9 @@
 
     return new Promise((resolve,reject)=>{
       let settled=false;
-      let submitted=false;
-      let responseLoadTimer=null;
-
       const cleanup=()=>{
         window.removeEventListener("message",onMessage);
-        frame.removeEventListener("load",onFrameLoad);
         window.clearTimeout(timer);
-        if(responseLoadTimer)window.clearTimeout(responseLoadTimer);
         form.remove();
         frame.remove();
       };
@@ -80,9 +74,18 @@
         callback(value);
       };
       const onMessage=event=>{
-        if(event.source!==frame.contentWindow)return;
+        // HtmlService may execute the returned document in a nested sandbox
+        // iframe. Do not require event.source === frame.contentWindow.
+        const origin=String(event.origin||"");
+        const fromGoogle=origin==="https://script.google.com" ||
+          origin==="https://script.googleusercontent.com" ||
+          origin.endsWith(".script.googleusercontent.com") ||
+          origin.endsWith(".googleusercontent.com");
+        if(!fromGoogle)return;
+
         const message=event.data;
         if(!message||message.channel!=="ENERGY_MONITOR_PORTAL"||message.requestId!==requestId)return;
+
         const result=message.result;
         if(!result||result.ok!==true){
           finish(reject,new Error(result&&result.message?result.message:"Permintaan ke Google Apps Script gagal."));
@@ -90,39 +93,23 @@
         }
         finish(resolve,result.data);
       };
-      const onFrameLoad=()=>{
-        if(!submitted){
-          submitted=true;
-          try{
-            form.submit();
-          }catch(error){
-            finish(reject,new Error("Form tidak dapat dikirim ke Google Apps Script: "+error.message));
-          }
-          return;
-        }
-
-        // The iframe loaded a response page but the Apps Script bridge did
-        // not post a message. This usually means an old deployment, a Google
-        // sign-in/permission page, or a runtime error in doPost().
-        responseLoadTimer=window.setTimeout(()=>{
-          finish(reject,new Error(
-            "Apps Script membuka halaman tetapi tidak mengirim respons portal. " +
-            "Periksa Deploy > Manage deployments: gunakan Web app, Execute as Me, " +
-            "Who has access Anyone, lalu deploy New version dari Code.gs terbaru."
-          ));
-        },1500);
-      };
       const timer=window.setTimeout(()=>{
         finish(reject,new Error(
-          "Apps Script tidak merespons. Buka URL /exec langsung untuk memastikan Web App dapat diakses, " +
-          "lalu periksa deployment terbaru dan izin akses Anyone."
+          "Tidak menerima balasan dari Apps Script. Pastikan Code.gs terbaru sudah di-deploy sebagai Web app, " +
+          "Execute as: Me, Who has access: Anyone. Buka URL /exec langsung untuk mengecek status deployment."
         ));
-      },30000);
+      },45000);
 
       window.addEventListener("message",onMessage);
-      frame.addEventListener("load",onFrameLoad);
       document.body.appendChild(frame);
       document.body.appendChild(form);
+      // Submit immediately. Waiting for the initial about:blank iframe load
+      // can leave the request unsent in some browsers.
+      try{
+        form.submit();
+      }catch(error){
+        finish(reject,new Error("Form tidak dapat dikirim ke Google Apps Script: "+error.message));
+      }
     });
   }
 
