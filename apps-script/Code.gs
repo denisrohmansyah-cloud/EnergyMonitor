@@ -304,12 +304,29 @@ function constantTimeEquals_(a, b) {
 /* WEB APP ENTRY POINT                                                        */
 /* -------------------------------------------------------------------------- */
 
-function doGet() {
+function doGet(e) {
+  // A simple browser diagnostic: open the /exec URL and confirm this JSON
+  // appears. It checks the deployment version and required database tabs.
+  const spreadsheet = getSpreadsheet_();
+  const requiredSheets = [
+    EM_CONFIG.SHEETS.CUSTOMERS,
+    EM_CONFIG.SHEETS.DEVICES,
+    EM_CONFIG.SHEETS.MEASUREMENTS,
+    EM_CONFIG.SHEETS.SETTINGS
+  ];
+  const missingSheets = requiredSheets.filter(function(name) {
+    return !spreadsheet.getSheetByName(name);
+  });
+
   return jsonOutput_({
     ok: true,
-    service: "Energy Monitor Sheets API",
-    version: "1.0.0",
-    message: "API aktif. Gunakan POST untuk operasi yang diizinkan."
+    service: "Energy Monitor Portal API",
+    version: "github-pages-apps-script-v2",
+    deployment: "active",
+    database: missingSheets.length ? "incomplete" : "connected",
+    spreadsheet: spreadsheet.getName(),
+    missingSheets: missingSheets,
+    timestamp: new Date().toISOString()
   });
 }
 
